@@ -1,0 +1,7 @@
+# Read by the "Obsidian Ignore" plugin (https://github.com/devxoul/obsidian-ignore) - hides
+# matching files/folders from the file explorer, quick switcher, search, graph view, and
+# backlinks. Same gitignore-style syntax as .gitignore, but a separate, unrelated mechanism: this
+# one only affects what Obsidian's own UI shows you, not what git tracks or commits.
+
+# Files deleted from within Obsidian land here - clutter, not real vault content.
+.trash/

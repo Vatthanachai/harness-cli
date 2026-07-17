@@ -53,8 +53,16 @@ var configuration = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
     .Build();
 
+// The file sink's path can't be set from appsettings.json - it needs to resolve to the current
+// user's profile at runtime (%USERPROFILE%\.aiyara\logs\), not a path relative to wherever the
+// process happens to be launched from, so every workspace's session lands in the same place
+// alongside the rest of the user-level config instead of scattering a "logs\" folder into
+// whichever directory the harness was run from.
+var logFilePath = Path.Combine(UserConfigPaths.Directory, "logs", "harness-.log");
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(configuration)
+    .WriteTo.File(logFilePath, rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
 try

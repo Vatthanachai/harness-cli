@@ -59,7 +59,7 @@ public static class SkillsSlashCommand
         }
 
         ConsoleTheme.WriteLineColored("  Skills:", ConsoleTheme.Orange);
-        foreach (var (name, description, enabled) in skills)
+        foreach (var (name, description, enabled, scope) in skills)
         {
             if (enabled)
             {
@@ -71,6 +71,7 @@ public static class SkillsSlashCommand
                 ConsoleTheme.WriteColored("    ✗ ", ConsoleTheme.Red);
                 ConsoleTheme.WriteColored($"{name,-20}", ConsoleTheme.Gray);
             }
+            ConsoleTheme.WriteColored($"{(scope == SkillScope.User ? "[user]    " : "[workspace]")} ", ConsoleTheme.Gray);
             ConsoleTheme.WriteLineColored(description, ConsoleTheme.Gray);
         }
     }

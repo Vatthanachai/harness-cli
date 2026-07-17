@@ -7,6 +7,14 @@ so the model doesn't need to re-explore the tree every session.
 
 - `aiyara-harness.slnx` — solution file, references all three projects below.
 - `global.json` — pins the .NET SDK version.
+- `Directory.Build.props` — MSBuild properties shared by every project (`TargetFramework`,
+  `ImplicitUsings`, `Nullable`). Auto-imported by every `.csproj` under this directory - add a new
+  project-wide setting here, not to each `.csproj` individually. A project-specific override (e.g.
+  `GenerateDocumentationFile`, currently only Cli/Tools) still belongs in that project's own file.
+- `Directory.Packages.props` — Central Package Management: every NuGet package version used
+  anywhere in the solution, in one place (`ManagePackageVersionsCentrally=true`). Individual
+  `.csproj` files reference packages by name only, no `Version` attribute - add new packages'
+  versions here, then a bare `<PackageReference Include="..." />` in the project that needs it.
 - `src/Aiyara.Harness.Cli/` — console entry point and chat loop.
 - `src/Aiyara.Harness.Models/` — config option types, JSON-backed user config store, workspace/trust/consent.
 - `src/Aiyara.Harness.Tools/` — tools exposed to the model.
@@ -17,9 +25,17 @@ so the model doesn't need to re-explore the tree every session.
 - `Program.cs` — startup: workspace trust check, offers to generate `AIYARA.md` if missing (runs
   one chat turn via `ChatSession.RunInitTurnAsync`), loads `AIYARA.md`/`FILES.md`/`TOOLS.md`/
   `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the Ollama client, registers tools,
-  starts the chat session.
+  starts the chat session. Builds the Serilog file sink's path here rather than in
+  `appsettings.json` - `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`,
+  needs to resolve at runtime to the current user's profile, not a path relative to wherever the
+  process happens to be launched from (which is what a relative path in the JSON config would do).
+  `appsettings.json` still owns the console sink and log-level settings.
 - `ChatSession.cs` — the interactive chat REPL loop; also exposes `RunInitTurnAsync` for the
-  one-off `AIYARA.md` generation turn at startup.
+  one-off `AIYARA.md` generation turn at startup. `RunSlashCommandAsync` resolves `/<name>` against
+  built-in commands first, then falls back to treating `<name>` as a skill (`/<skill-name> [extra
+  instructions]`) - loads its content via `SkillStore.LoadContent` and sends it as the user's turn
+  through the normal `SendMessageAsync` path, this harness's user-triggered equivalent of the
+  model calling `use_skill` itself. A built-in command always wins on a name clash.
 - `Persona.cs` — the assistant's persona/system prompt (baked in, not user-editable).
 - `ToolRegistry.cs` — tracks which registered tools are enabled/disabled for the running session.
 - `TerminalUI.cs`, `ConsoleTheme.cs`, `NativeConsole.cs` — console rendering.
@@ -31,6 +47,10 @@ so the model doesn't need to re-explore the tree every session.
   horizontal lines, no side borders or corners) - `ClearRow` never touches a row's very last
   column, so anything drawn there (e.g. a box corner) would never get cleared again for the rest
   of the session; keep any future border/line drawing at most `width - 1` columns wide.
+  `BuildSuggestions` (used for both the live "/" dropdown and Tab-completion) merges built-in
+  commands with enabled skill names, commands winning any name clash - mirrors the dispatch
+  priority `ChatSession.RunSlashCommandAsync` actually uses, so what autocompletes is always what
+  would actually run.
 - `StatuslineRunner.cs` — runs the configured statusline command each turn, via `powershell.exe`
   on Windows (`/bin/sh` elsewhere). PowerShell, not `cmd.exe`, is deliberate: it supports
   `$(...)` command substitution, matching the bash/zsh-style syntax users tend to write for a
@@ -39,10 +59,11 @@ so the model doesn't need to re-explore the tree every session.
   codepage a freshly spawned redirected shell starts on. A same-line `chcp 65001 &&` prefix does
   *not* fix that encoding issue under `cmd.exe` - it parses/tokenizes the whole `/c` argument
   under the old codepage before executing anything in it.
-- `Commands/` — slash commands (`/config`, `/model`, `/tools`, `/skills`, `/clear`, `/workspace`)
-  and their registry. `/clear` resets `chat.Messages` back to just the system message and re-shows
-  the welcome screen via `SlashCommandContext.TerminalUI` - it doesn't touch tool/skill enable
-  state or the task list.
+- `Commands/` — the six built-in slash commands (`/config`, `/model`, `/tools`, `/skills`,
+  `/clear`, `/workspace`) and their registry. `/clear` resets `chat.Messages` back to just the
+  system message and re-shows the welcome screen via `SlashCommandContext.TerminalUI` - it doesn't
+  touch tool/skill enable state or the task list. Every enabled skill is *also* invokable as
+  `/<skill-name>` even though it isn't one of these six - see `ChatSession.cs`.
 
 ## `src/Aiyara.Harness.Models/Config/`
 
@@ -68,14 +89,25 @@ so the model doesn't need to re-explore the tree every session.
   `%USERPROFILE%\.aiyara\`.
 - `TaskBoard.cs` — in-memory task list (not persisted) the model updates via `write_tasks`/
   `update_task` to make multi-step work visible; this harness's equivalent of Claude Code's task list.
-- `SkillStore.cs` — reads/writes/deletes/lists skills under `.aiyara/skills/<name>/SKILL.md` in the
-  workspace; this harness's equivalent of Claude Code's Skill system. Skill names are slugified
-  (letters/digits/hyphens only), which also rules out path traversal via a crafted name.
+- `SkillStore.cs` — reads/writes/deletes/lists skills under `.aiyara/skills/<name>/SKILL.md`; this
+  harness's equivalent of Claude Code's Skill system. Two scopes (`SkillScope`): `Workspace`
+  (default, this project's own `.aiyara/`, meant to be committed and shared via the repo) and
+  `User` (`%USERPROFILE%\.aiyara\skills\`, personal, available from every project). A workspace
+  skill shadows a same-named user skill everywhere a plain name is used (listing, `use_skill`,
+  `delete_skill` without an explicit scope) - `SkillStore.ResolveScope` is the single place that
+  decides which one wins. Skill names are slugified (letters/digits/hyphens only), which also
+  rules out path traversal via a crafted name.
 - `SkillRegistry.cs` — tracks which skills are enabled for the running session, the skill-level
   counterpart to `ToolRegistry`. Lives here (not alongside `ToolRegistry` in Cli) because
-  `UseSkillTool`/`ListSkillsTool` in Tools need to read it, and Tools cannot depend on Cli.
+  `UseSkillTool`/`ListSkillsTool` in Tools need to read it, and Tools cannot depend on Cli. `Find`
+  looks up a skill by name regardless of enabled state - used by `ChatSession`/`SlashInputReader`
+  to resolve `/<skill-name>` as a slash command.
 - `ModelsOptions.cs`, `OllamaConnectionOptions.cs`, `McpOptions.cs`, `RagOptions.cs`,
-  `StatuslineOptions.cs` — option types stored as JSON config files.
+  `StatuslineOptions.cs`, `LoggingOptions.cs` — option types stored as JSON config files.
+  `LoggingOptions` (`logging.json`) holds two independent, both-off-by-default toggles
+  `ChatSession.FlushThinking` checks fresh on every flush: `ShowThinking` (display the model's
+  reasoning live in the terminal) and `LogThinking` (also write it to the log file). Neither
+  implies the other.
 - `ConfigCommand.cs` — implements the `harness config` CLI subcommand.
 
 ## `src/Aiyara.Harness.Tools/`
@@ -97,8 +129,11 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
   live `Chat`'s system message; conversation history is untouched.
 - `WriteTasksTool.cs`, `UpdateTaskTool.cs` — create/update the shared `TaskBoard`.
 - `WriteSkillTool.cs`, `DeleteSkillTool.cs`, `UseSkillTool.cs`, `ListSkillsTool.cs` — create/update,
-  permanently delete, load, and list skills (see `SkillStore.cs`). `delete_skill` is confirmed per
-  exact skill name (not a broad key), since deletion is irreversible.
+  permanently delete, load, and list skills (see `SkillStore.cs`). Both take an optional `scope`
+  ("workspace"/"user"; `write_skill` defaults to "workspace" if omitted, `delete_skill` resolves
+  via `SkillStore.ResolveScope` if omitted). `delete_skill` is confirmed per exact skill name *and*
+  scope (not a broad key), since deletion is irreversible and a same-named skill can exist in both
+  scopes at once.
 - `DateTimeTool.cs` — current date/time.
 - `CommonTools.cs` — excluded from the build (see `Aiyara.Harness.Tools.csproj`); not currently wired in.
 

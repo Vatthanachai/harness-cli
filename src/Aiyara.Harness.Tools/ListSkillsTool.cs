@@ -22,7 +22,8 @@ public class ListSkillsTool : BaseTool
         Function = new Function
         {
             Name = "list_skills",
-            Description = "Lists every skill currently on disk, with its description and whether it's enabled.",
+            Description = "Lists every skill currently on disk (workspace and user scope), with its " +
+                          "description and whether it's enabled.",
             Parameters = new Parameters { Properties = new Dictionary<string, Property>(), Required = [] }
         };
     }
@@ -33,6 +34,7 @@ public class ListSkillsTool : BaseTool
 
         return skills.Count == 0
             ? "(no skills yet - create one with write_skill)"
-            : string.Join('\n', skills.Select(s => $"{(s.Enabled ? "[enabled] " : "[disabled]")} {s.Name} - {s.Description}"));
+            : string.Join('\n', skills.Select(s =>
+                $"{(s.Enabled ? "[enabled] " : "[disabled]")} [{(s.Scope == SkillScope.User ? "user" : "workspace")}] {s.Name} - {s.Description}"));
     }
 }

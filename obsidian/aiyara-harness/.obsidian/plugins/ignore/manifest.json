@@ -1,0 +1,10 @@
+{
+  "id": "ignore",
+  "name": "Ignore",
+  "version": "1.0.2",
+  "minAppVersion": "1.0.0",
+  "description": "Hide files matching an ignore file (gitignore syntax) from the file explorer, search, and graph.",
+  "author": "Jeon Suyeol",
+  "authorUrl": "https://github.com/devxoul",
+  "isDesktopOnly": false
+}

@@ -33,6 +33,28 @@ how the model should use its own tools here — not a description of what the to
 - Non-ASCII output (Thai labels, etc.) is handled for you - don't add your own `chcp`/encoding
   workarounds to the command.
 
+## Adding a NuGet package
+
+- Package versions are centrally managed (`Directory.Packages.props`, `ManagePackageVersionsCentrally=true`)
+  - prefer `run_command` with `dotnet add package <name>` in the project that needs it; the CLI is
+  CPM-aware and updates both files correctly on its own.
+- If editing `.csproj` by hand instead, add `<PackageVersion Include="..." Version="..." />` to
+  `Directory.Packages.props` and a bare `<PackageReference Include="..." />` (no `Version`
+  attribute) to the project's `.csproj`. A `Version` on a `PackageReference` now causes a build
+  error (NU1008) because CPM is on.
+
+## `write_skill` / `delete_skill` scope
+
+- Default to `scope: "workspace"` (or omit it) for anything specific to this project - it lives in
+  `.aiyara/skills/` at the repo root and is meant to be committed and shared with the team.
+- Only use `scope: "user"` when the user is explicit that a skill is a personal, cross-project
+  preference (e.g. "however I write commit messages, everywhere") - it's invisible to anyone else
+  who clones this repo.
+- If a workspace skill and a user skill share a name, the workspace one wins for `use_skill` and
+  for `delete_skill` calls that don't specify `scope` - mention this if you're about to create a
+  workspace skill that would shadow an existing user one (or vice versa), since the user's
+  cross-project skill would silently stop applying here.
+
 ## Keeping `FILES.md` / `TOOLS.md` current
 
 - If you add, rename, or remove a source file, or add a new tool, update `FILES.md` /

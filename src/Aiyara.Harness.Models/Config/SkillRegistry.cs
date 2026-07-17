@@ -23,10 +23,17 @@ public sealed class SkillRegistry
     public IReadOnlyList<SkillInfo> Enabled => All.Where(s => !_disabledNames.Contains(s.Name)).ToList();
 
     /// <summary>
-    /// Each skill's name, description and current enabled state.
+    /// Each skill's name, description, current enabled state, and which scope it's loaded from.
     /// </summary>
-    public IEnumerable<(string Name, string Description, bool Enabled)> Describe() =>
-        All.Select(s => (s.Name, s.Description, !_disabledNames.Contains(s.Name)));
+    public IEnumerable<(string Name, string Description, bool Enabled, SkillScope Scope)> Describe() =>
+        All.Select(s => (s.Name, s.Description, !_disabledNames.Contains(s.Name), s.Scope));
+
+    /// <summary>
+    /// The skill named <paramref name="name"/> (case-insensitive), regardless of enabled state, or
+    /// null if none exists. Used to resolve "/&lt;skill-name&gt;" as a slash command.
+    /// </summary>
+    public SkillInfo? Find(string name) =>
+        All.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Whether <paramref name="name"/> both exists and is currently enabled.

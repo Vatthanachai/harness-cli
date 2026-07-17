@@ -1,0 +1,10 @@
+# Obsidian - local-only window/pane layout and cache, not meant to be shared.
+# Everything else under .obsidian/ (core-plugins.json, appearance.json, snippets, ...) is kept,
+# so opening this vault gives consistent settings/plugins to anyone who clones the repo.
+.obsidian/workspace.json
+.obsidian/workspace.json.bak
+.obsidian/workspace-mobile.json
+.obsidian/cache
+
+# Files deleted from within Obsidian land here instead of being removed outright.
+.trash/

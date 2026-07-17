@@ -1,23 +1,25 @@
 using System.Text;
 
 using Aiyara.Harness.Cli.Commands;
+using Aiyara.Harness.Models.Config;
 
 namespace Aiyara.Harness.Cli;
 
 /// <summary>
 /// Reads a line of input inside a Claude Code-style bordered box, with live slash command
-/// suggestions - or a persistent status line - displayed below it. Long input wraps onto
-/// additional rows within the box (up to <see cref="MaxInputLines"/>) instead of scrolling
-/// horizontally, and the buffer can hold real line breaks - typed via Shift/Alt+Enter, or
-/// inserted automatically when a multi-line paste is detected. On submit, the box collapses into
-/// a "&gt; message" block (still multi-line if the message has embedded breaks).
+/// suggestions - built-in commands and enabled skills alike, see <see cref="BuildSuggestions"/> -
+/// or a persistent status line, displayed below it. Long input wraps onto additional rows within
+/// the box (up to <see cref="MaxInputLines"/>) instead of scrolling horizontally, and the buffer
+/// can hold real line breaks - typed via Shift/Alt+Enter, or inserted automatically when a
+/// multi-line paste is detected. On submit, the box collapses into a "&gt; message" block (still
+/// multi-line if the message has embedded breaks).
 /// </summary>
 internal static class SlashInputReader
 {
     private const string HintText = "  ? for shortcuts";
     private const int MaxInputLines = 6;
 
-    public static string ReadLine(SlashCommandRegistry registry, TerminalUI ui, string statusText = "")
+    public static string ReadLine(SlashCommandRegistry registry, SkillRegistry skillRegistry, TerminalUI ui, string statusText = "")
     {
         if (!ui.IsActive)
         {
@@ -49,7 +51,7 @@ internal static class SlashInputReader
         var buffer = new StringBuilder();
         var cursor = 0;
 
-        Render(topRow, width, maxHintRows, buffer, cursor, registry, statusText);
+        Render(topRow, width, maxHintRows, buffer, cursor, registry, skillRegistry, statusText);
 
         while (true)
         {
@@ -117,8 +119,8 @@ internal static class SlashInputReader
                 case ConsoleKey.Tab:
                     if (buffer.Length > 0 && buffer[0] == '/')
                     {
-                        var match = registry.Match(buffer.ToString(1, buffer.Length - 1)).FirstOrDefault();
-                        if (match is not null)
+                        var match = BuildSuggestions(buffer.ToString(1, buffer.Length - 1), registry, skillRegistry).FirstOrDefault();
+                        if (match.Name is not null)
                         {
                             buffer.Clear();
                             buffer.Append('/').Append(match.Name).Append(' ');
@@ -137,7 +139,7 @@ internal static class SlashInputReader
             }
 
             width = Math.Max(Console.WindowWidth, 20);
-            Render(topRow, width, maxHintRows, buffer, cursor, registry, statusText);
+            Render(topRow, width, maxHintRows, buffer, cursor, registry, skillRegistry, statusText);
         }
     }
 
@@ -149,7 +151,7 @@ internal static class SlashInputReader
     /// held hint text before the box grew, or held border/input text before it shrank, would
     /// otherwise stay behind as stale output that nothing else overwrites this frame.
     /// </summary>
-    private static void Render(int topRow, int width, int maxHintRows, StringBuilder buffer, int cursor, SlashCommandRegistry registry, string statusText)
+    private static void Render(int topRow, int width, int maxHintRows, StringBuilder buffer, int cursor, SlashCommandRegistry registry, SkillRegistry skillRegistry, string statusText)
     {
         ClearRow(topRow, 1);
         Console.SetCursorPosition(0, topRow);
@@ -185,7 +187,7 @@ internal static class SlashInputReader
         ConsoleTheme.WriteColored(new string(ConsoleTheme.Horizontal[0], Math.Max(width - 1, 0)), ConsoleTheme.Orange);
 
         var hintRow = bottomRow + 1;
-        RenderBelowBox(buffer, registry, hintRow, maxHintRows, statusText);
+        RenderBelowBox(buffer, registry, skillRegistry, hintRow, maxHintRows, statusText);
 
         Console.SetCursorPosition(3 + Math.Min(cursorCol, maxTextLen), topRow + 1 + (cursorRowIndex - windowStart)); // " > " prefix is 3 columns wide
     }
@@ -251,10 +253,10 @@ internal static class SlashInputReader
     // the last visible character never lands on the terminal's final column.
     private static int GetMaxTextLen(int width) => Math.Max(width - 4, 0);
 
-    private static void RenderBelowBox(StringBuilder buffer, SlashCommandRegistry registry, int hintRow, int maxHintRows, string statusText)
+    private static void RenderBelowBox(StringBuilder buffer, SlashCommandRegistry registry, SkillRegistry skillRegistry, int hintRow, int maxHintRows, string statusText)
     {
         var suggestions = buffer.Length > 0 && buffer[0] == '/'
-            ? registry.Match(buffer.ToString(1, buffer.Length - 1)).ToList()
+            ? BuildSuggestions(buffer.ToString(1, buffer.Length - 1), registry, skillRegistry)
             : [];
 
         var maxShow = Math.Min(suggestions.Count, maxHintRows);
@@ -267,15 +269,39 @@ internal static class SlashInputReader
 
             if (i < maxShow)
             {
-                var cmd = suggestions[i];
-                ConsoleTheme.WriteColored($"    /{cmd.Name,-12}", ConsoleTheme.Orange);
-                ConsoleTheme.WriteColored(cmd.Description, ConsoleTheme.Gray);
+                var (name, description) = suggestions[i];
+                ConsoleTheme.WriteColored($"    /{name,-12}", ConsoleTheme.Orange);
+                ConsoleTheme.WriteColored(description, ConsoleTheme.Gray);
             }
             else if (i == 0 && maxShow == 0)
             {
                 ConsoleTheme.WriteStatusLine(HintText, statusText, Console.WindowWidth - 1);
             }
         }
+    }
+
+    // Built-in commands first (so one always wins a name clash against a skill), then enabled
+    // skills whose name isn't already taken by a command - mirrors the same precedence
+    // ChatSession.RunSlashCommandAsync uses when actually dispatching "/<name>".
+    private static List<(string Name, string Description)> BuildSuggestions(string prefix, SlashCommandRegistry registry, SkillRegistry skillRegistry)
+    {
+        var suggestions = new List<(string Name, string Description)>();
+        var commandNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cmd in registry.Match(prefix))
+        {
+            commandNames.Add(cmd.Name);
+            suggestions.Add((cmd.Name, cmd.Description));
+        }
+
+        foreach (var skill in skillRegistry.Enabled)
+        {
+            if (!skill.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (commandNames.Contains(skill.Name)) continue;
+            suggestions.Add((skill.Name, skill.Description));
+        }
+
+        return suggestions;
     }
 
     private static void ClearRow(int row, int count)

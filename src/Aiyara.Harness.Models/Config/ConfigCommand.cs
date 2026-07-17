@@ -24,7 +24,8 @@ public static class ConfigCommand
         ["mcp"] = () => Seed("mcp.json", new McpOptions()),
         ["rag"] = () => Seed("rag.json", new RagOptions()),
         ["statusline"] = () => Seed("statusline.json", new StatuslineOptions()),
-        ["trust"] = () => Seed("trust.json", new TrustOptions())
+        ["trust"] = () => Seed("trust.json", new TrustOptions()),
+        ["logging"] = () => Seed("logging.json", new LoggingOptions())
     };
 
     /// <summary>
@@ -163,7 +164,7 @@ public static class ConfigCommand
               config set <category> <key> <value>  Change a single value.
               config edit <category>                Open a category's JSON file in your default editor.
 
-            Categories: ollama, models, mcp, rag, statusline, trust
+            Categories: ollama, models, mcp, rag, statusline, trust, logging
             """);
     }
 }

@@ -35,7 +35,7 @@ public sealed class ChatSession(Chat chat, ToolRegistry toolRegistry, SlashComma
 
         while (true)
         {
-            var message = SlashInputReader.ReadLine(registry, ui, await BuildStatusTextAsync());
+            var message = SlashInputReader.ReadLine(registry, context.SkillRegistry, ui, await BuildStatusTextAsync());
             if (string.IsNullOrEmpty(message) || message.Equals("exit", StringComparison.OrdinalIgnoreCase)) return;
 
             if (message[0] == '/')
@@ -150,8 +150,20 @@ public sealed class ChatSession(Chat chat, ToolRegistry toolRegistry, SlashComma
         if (_thinkBuffer.Length == 0) return;
 
         var thought = _thinkBuffer.ToString();
-        ConsoleTheme.WriteThinking(thought);
-        Log.Information("Model thinking: {Think}", thought);
+
+        // Reloaded fresh each flush (rather than cached once) so "/config set logging ShowThinking
+        // true" (or LogThinking) takes effect immediately, same as the statusline command reload
+        // in BuildStatusTextAsync - both off by default: ShowThinking because most reasoning
+        // traces are verbose and not meant to be read, LogThinking because it can otherwise bloat
+        // the log file quickly. The two are independent - showing it live doesn't imply logging it.
+        var loggingOptions = UserConfigStore.Load("logging.json", new LoggingOptions());
+
+        if (loggingOptions.ShowThinking)
+            ConsoleTheme.WriteThinking(thought);
+
+        if (loggingOptions.LogThinking)
+            Log.Information("Model thinking: {Think}", thought);
+
         _thinkBuffer.Clear();
     }
 
@@ -167,25 +179,83 @@ public sealed class ChatSession(Chat chat, ToolRegistry toolRegistry, SlashComma
                 ConsoleTheme.WriteColored($"    /{cmd.Name,-12}", ConsoleTheme.BrightCyan);
                 ConsoleTheme.WriteLineColored(cmd.Description, ConsoleTheme.Gray);
             }
+
+            var enabledSkills = context.SkillRegistry.Enabled;
+            if (enabledSkills.Count > 0)
+            {
+                ConsoleTheme.WriteLineColored("  Skills:", ConsoleTheme.BrightCyan);
+                foreach (var skillInfo in enabledSkills)
+                {
+                    ConsoleTheme.WriteColored($"    /{skillInfo.Name,-12}", ConsoleTheme.BrightCyan);
+                    ConsoleTheme.WriteLineColored(skillInfo.Description, ConsoleTheme.Gray);
+                }
+            }
+
             Console.WriteLine();
             return;
         }
 
         var command = registry.Find(parts[0]);
-        if (command is null)
+        if (command is not null)
         {
-            ConsoleTheme.WriteError($"Unknown command '/{parts[0]}'");
-            Console.Write("  ");
-            ConsoleTheme.WriteColored("Available: ", ConsoleTheme.Gray);
-            ConsoleTheme.WriteLineColored(
-                string.Join(", ", registry.All.Select(c => "/" + c.Name)),
-                ConsoleTheme.Cyan);
+            Console.WriteLine();
+            await command.Handler(parts[1..], context);
             Console.WriteLine();
             return;
         }
 
+        // Not a built-in command - fall back to treating it as "/<skill-name> [extra instructions]",
+        // this harness's equivalent of Claude Code's own slash-invokable skills. A built-in command
+        // always wins on a name clash (checked first, above), so a skill can never shadow one.
+        var skill = context.SkillRegistry.Find(parts[0]);
+        if (skill is not null)
+        {
+            await RunSkillAsSlashCommandAsync(skill.Name, string.Join(' ', parts[1..]));
+            return;
+        }
+
+        ConsoleTheme.WriteError($"Unknown command '/{parts[0]}'");
+        Console.Write("  ");
+        ConsoleTheme.WriteColored("Available: ", ConsoleTheme.Gray);
+        ConsoleTheme.WriteLineColored(
+            string.Join(", ", registry.All.Select(c => "/" + c.Name)
+                .Concat(context.SkillRegistry.All.Select(s => "/" + s.Name))),
+            ConsoleTheme.Cyan);
         Console.WriteLine();
-        await command.Handler(parts[1..], context);
-        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// Loads <paramref name="skillName"/>'s instructions and sends them as the user's turn for this
+    /// message - the same content <c>use_skill</c> would return to the model, just triggered
+    /// directly by the user typing "/&lt;skill-name&gt;" instead of the model deciding to call it.
+    /// <paramref name="extra"/> (everything typed after the skill name) is appended as additional,
+    /// specific instructions; empty is fine - the skill's own instructions stand alone.
+    /// </summary>
+    private async Task RunSkillAsSlashCommandAsync(string skillName, string extra)
+    {
+        if (!context.SkillRegistry.IsEnabled(skillName))
+        {
+            Console.WriteLine();
+            ConsoleTheme.WriteError($"Skill '{skillName}' is disabled. Enable it with '/skills on {skillName}'.");
+            Console.WriteLine();
+            return;
+        }
+
+        var content = SkillStore.LoadContent(skillName);
+        if (content is null)
+        {
+            Console.WriteLine();
+            ConsoleTheme.WriteError($"Skill '{skillName}' has no content.");
+            Console.WriteLine();
+            return;
+        }
+
+        ConsoleTheme.WriteToolCallHeader($"skill: {skillName}");
+
+        var skillMessage = string.IsNullOrWhiteSpace(extra)
+            ? $"Follow the \"{skillName}\" skill below for this turn:\n\n{content}"
+            : $"Follow the \"{skillName}\" skill below for this turn:\n\n{content}\n\n---\n\nAdditional instructions from the user: {extra}";
+
+        await SendMessageAsync(skillMessage);
     }
 }
