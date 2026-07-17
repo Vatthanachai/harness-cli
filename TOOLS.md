@@ -23,6 +23,16 @@ how the model should use its own tools here — not a description of what the to
 - Never suggest destructive commands (`git reset --hard`, `git push --force`, `rm -rf`, dropping
   databases) through this tool without calling it out explicitly first.
 
+## `set_statusline_command` usage
+
+- The command runs via `powershell.exe` on Windows (`/bin/sh` elsewhere) - write PowerShell syntax
+  (`$(...)` for command substitution, e.g. `$(git rev-parse --abbrev-ref HEAD)`), not `cmd.exe`
+  batch syntax (`%cd%`, `for /f ...`). `cmd.exe` doesn't understand `$(...)` at all and just
+  prints it back literally instead of evaluating it - a real bug hit in practice, see
+  `StatuslineRunner.cs`.
+- Non-ASCII output (Thai labels, etc.) is handled for you - don't add your own `chcp`/encoding
+  workarounds to the command.
+
 ## Keeping `FILES.md` / `TOOLS.md` current
 
 - If you add, rename, or remove a source file, or add a new tool, update `FILES.md` /

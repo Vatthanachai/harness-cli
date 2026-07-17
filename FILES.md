@@ -22,9 +22,23 @@ so the model doesn't need to re-explore the tree every session.
   one-off `AIYARA.md` generation turn at startup.
 - `Persona.cs` — the assistant's persona/system prompt (baked in, not user-editable).
 - `ToolRegistry.cs` — tracks which registered tools are enabled/disabled for the running session.
-- `TerminalUI.cs`, `ConsoleTheme.cs`, `NativeConsole.cs`, `SlashInputReader.cs` — console rendering
-  and input handling.
-- `StatuslineRunner.cs` — runs the configured statusline command each turn.
+- `TerminalUI.cs`, `ConsoleTheme.cs`, `NativeConsole.cs` — console rendering.
+- `SlashInputReader.cs` — the input box. Wraps long lines across up to 6 rows instead of
+  scrolling horizontally, and the buffer can hold real line breaks - typed via Shift/Alt+Enter, or
+  inserted automatically when a multi-line paste is detected (a paste arrives as a burst of
+  synthetic keystrokes including one Enter per line break, distinguished from a real Enter
+  keypress by `Console.KeyAvailable` being true right after). Top/bottom border only (plain
+  horizontal lines, no side borders or corners) - `ClearRow` never touches a row's very last
+  column, so anything drawn there (e.g. a box corner) would never get cleared again for the rest
+  of the session; keep any future border/line drawing at most `width - 1` columns wide.
+- `StatuslineRunner.cs` — runs the configured statusline command each turn, via `powershell.exe`
+  on Windows (`/bin/sh` elsewhere). PowerShell, not `cmd.exe`, is deliberate: it supports
+  `$(...)` command substitution, matching the bash/zsh-style syntax users tend to write for a
+  dynamic statusline, and a `[Console]::OutputEncoding` UTF-8 override is injected ahead of the
+  user's command so non-ASCII output (e.g. Thai labels) doesn't get mangled by the legacy ANSI
+  codepage a freshly spawned redirected shell starts on. A same-line `chcp 65001 &&` prefix does
+  *not* fix that encoding issue under `cmd.exe` - it parses/tokenizes the whole `/c` argument
+  under the old codepage before executing anything in it.
 - `Commands/` — slash commands (`/config`, `/model`, `/tools`, `/skills`, `/clear`, `/workspace`)
   and their registry. `/clear` resets `chat.Messages` back to just the system message and re-shows
   the welcome screen via `SlashCommandContext.TerminalUI` - it doesn't touch tool/skill enable

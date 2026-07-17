@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 using Serilog;
@@ -28,17 +29,49 @@ internal static class StatuslineRunner
     {
         if (string.IsNullOrWhiteSpace(command)) return null;
 
+        // UTF8Encoding(false) (no BOM) rather than Encoding.UTF8, since a leading BOM would land
+        // inside the first line of output and corrupt the status text.
+        var utf8 = new UTF8Encoding(false);
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+            FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "/bin/sh",
+            // Without this, the command inherits the harness process's own working directory -
+            // which only happens to match the workspace when the harness was launched from inside
+            // it with no explicit path argument. A `git`/`pwd`-based command would otherwise read
+            // the wrong repo whenever the two differ.
+            WorkingDirectory = context.Cwd,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardInputEncoding = utf8,
+            StandardOutputEncoding = utf8,
+            StandardErrorEncoding = utf8
         };
-        startInfo.ArgumentList.Add(OperatingSystem.IsWindows() ? "/c" : "-c");
-        startInfo.ArgumentList.Add(command);
+
+        if (OperatingSystem.IsWindows())
+        {
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-Command");
+            // A freshly spawned, redirected-output cmd.exe/PowerShell process starts on the
+            // system's legacy ANSI codepage (e.g. 874 on a Thai-locale machine), not UTF-8 - any
+            // non-ASCII text a custom command writes (or embeds, like Thai labels here) gets
+            // mangled into replacement characters once .NET decodes it as UTF-8 on the other end.
+            // Forcing the encoding as the first statement, before the user's command runs, is what
+            // actually fixes it - a same-line "chcp 65001 &&" prefix does NOT work, because cmd.exe
+            // parses/tokenizes the whole /c argument under the OLD codepage before executing
+            // anything in it. PowerShell also gives $(...) command-substitution syntax, matching
+            // what users typically write (and copy from bash/zsh examples) for a dynamic statusline.
+            startInfo.ArgumentList.Add($"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); {command}");
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add(command);
+        }
 
         try
         {
