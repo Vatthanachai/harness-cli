@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aiyara.Harness.Cli/Aiyara.Harness.Cli.csproj" />
+    <Project Path="src/Aiyara.Harness.Models/Aiyara.Harness.Models.csproj" />
+    <Project Path="src/Aiyara.Harness.Tools/Aiyara.Harness.Tools.csproj" />
+  </Folder>
+</Solution>
