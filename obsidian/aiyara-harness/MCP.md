@@ -76,4 +76,4 @@ see [[Tools]].
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Providers]] · [[Tools]]
+[[Index]] · [[Architecture]] · [[Providers]] · [[RAG]] · [[Tools]]

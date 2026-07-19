@@ -2,10 +2,10 @@
 
 A .NET console chat client for a local [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai)
 server — streaming responses, tool-calling (including tools from any configured
-[MCP](https://modelcontextprotocol.io) server), in-chat slash commands, a workspace-scoped
-trust/consent model, and a Claude Code-inspired Skill system. Confines its file/shell tools to a
-single workspace folder per run, the same way Claude Code confines itself to the folder it's
-launched in.
+[MCP](https://modelcontextprotocol.io) server, and optional retrieval-augmented document search),
+in-chat slash commands, a workspace-scoped trust/consent model, and a Claude Code-inspired Skill
+system. Confines its file/shell tools to a single workspace folder per run, the same way Claude
+Code confines itself to the folder it's launched in.
 
 ## Projects
 
@@ -57,7 +57,7 @@ time each is read:
 | `trust.json` | `TrustedWorkspaces`, `AllowedExternalPaths` — folders and files you've already approved; managed automatically by the trust/consent prompts, not usually hand-edited. |
 | `logging.json` | `ShowThinking` — whether the model's thinking/reasoning is displayed live in the terminal. `LogThinking` — whether it's also written to the log (console + rolling file). Two independent toggles; **both off by default.** |
 | `mcp.json` | `Servers` — [MCP](https://modelcontextprotocol.io) server definitions (`Name`, `Command`, `Args`, `Env`), each launched over stdio at startup. Every tool the server reports is exposed to the model as `<Name>_<tool>` (e.g. a server named `github` exposing `search_issues` becomes `github_search_issues`), alongside the built-in tools — `/tools` lists and toggles them the same way. A server that fails to launch or complete the MCP handshake is skipped with a warning logged, rather than stopping the harness from starting. |
-| `rag.json` | `Enabled`, `DocumentsPath`, `VectorStorePath`, `EmbeddingModel`, `ChunkSize`, `ChunkOverlap`, `TopK`. Reserved for upcoming retrieval-augmented generation support; not yet wired into the chat loop. |
+| `rag.json` | `Enabled` — turns retrieval-augmented generation on. `DocumentsPath` — folder (relative to the workspace root, unless absolute) to index. `VectorStorePath` — where the index is persisted; defaults to `.aiyara/rag` under the workspace root if left empty. `EmbeddingModel` — embedding model name on whichever provider is active (e.g. `nomic-embed-text` on Ollama, `text-embedding-nomic-embed-text-v1.5` on LM Studio). `ChunkSize`/`ChunkOverlap` — characters per chunk / shared between consecutive chunks. `TopK` — chunks returned per query. When enabled, the harness (re)indexes `DocumentsPath` at startup — incrementally, only embedding files that are new or changed since the index was last built — and exposes a `search_documents` tool the model calls on demand (see [Tools](#tools)); a bad path or embedding failure is logged as a warning and just leaves `search_documents` unavailable, rather than stopping the harness from starting. |
 
 Edit them from the command line without starting a chat session:
 
@@ -113,7 +113,9 @@ The model can call these during a conversation (registered in `src/Aiyara.Harnes
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and not currently wired in.
 
-Plus, dynamically, one tool per capability reported by each connected [MCP](#configuration) server (`mcp.json`), named `<server>_<tool>`.
+Plus, dynamically:
+- One tool per capability reported by each connected [MCP](#configuration) server (`mcp.json`), named `<server>_<tool>`.
+- `search_documents` — searches the RAG index built from `rag.json`'s `DocumentsPath`, if `Enabled: true`.
 
 ## Skills
 

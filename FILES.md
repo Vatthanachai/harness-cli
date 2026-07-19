@@ -24,11 +24,13 @@ so the model doesn't need to re-explore the tree every session.
 
 - `Program.cs` — startup: workspace trust check, offers to generate `AIYARA.md` if missing (runs
   one chat turn via `ChatSession.RunInitTurnAsync`), loads `AIYARA.md`/`FILES.md`/`TOOLS.md`/
-  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the chat engine for whichever provider
-  `models.json`'s `Provider` names (`Ollama` or `LMStudio` - see
-  `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in `mcp.json` and appends
-  their tools (see `src/Aiyara.Harness.Tools/Mcp/`), registers the built-in tools, starts the chat
-  session. Builds the Serilog file sink's path here rather than in `appsettings.json` -
+  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the chat engine (and an
+  `IEmbeddingClient`) for whichever provider `models.json`'s `Provider` names (`Ollama` or
+  `LMStudio` - see `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in
+  `mcp.json` and appends their tools (see `src/Aiyara.Harness.Tools/Mcp/`), builds/refreshes the
+  RAG index and adds `search_documents` if `rag.json`'s `Enabled` is true (see
+  `src/Aiyara.Harness.Tools/Rag/`), registers the built-in tools, starts the chat session. Builds
+  the Serilog file sink's path here rather than in `appsettings.json` -
   `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
   runtime to the current user's profile, not a path relative to wherever the process happens to be
   launched from (which is what a relative path in the JSON config would do). `appsettings.json`
@@ -148,11 +150,12 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
 ## `src/Aiyara.Harness.Tools/Providers/`
 
 Abstracts the chat backend behind `IChatEngine` (message history, streaming, tool-calling,
-thinking events) and `IModelCatalog` (list/switch/pull models), so `ChatSession`, `HandoffTool`,
-`SlashCommandContext` and `ModelSlashCommand` don't know or care which provider is active -
-`Program.cs` picks the implementation once at startup based on `ModelsOptions.Provider`.
+thinking events), `IModelCatalog` (list/switch/pull models), and `IEmbeddingClient` (text ->
+vectors, for RAG), so `ChatSession`, `HandoffTool`, `SlashCommandContext`, `ModelSlashCommand` and
+`RagIndexBuilder` don't know or care which provider is active - `Program.cs` picks the
+implementations once at startup based on `ModelsOptions.Provider`.
 
-- `IChatEngine.cs`, `IModelCatalog.cs` — the two interfaces.
+- `IChatEngine.cs`, `IModelCatalog.cs`, `IEmbeddingClient.cs` — the three interfaces.
 - `Ollama/OllamaChatEngine.cs`, `Ollama/OllamaModelCatalog.cs` — thin forwarding wrappers around
   the real `OllamaSharp.Chat` / `IOllamaApiClient` (all the actual behavior is OllamaSharp's).
 - `LmStudio/LmStudioChatEngine.cs` — hand-rolled client for LM Studio's OpenAI-compatible
@@ -168,6 +171,9 @@ thinking events) and `IModelCatalog` (list/switch/pull models), so `ChatSession`
 - `LmStudio/LmStudioModelCatalog.cs` — uses LM Studio's own `/api/v0/models` (richer than the
   plain OpenAI `/v1/models`) for loaded-state and `tool_use` capability per model; `PullModelAsync`
   throws `NotSupportedException` since LM Studio has no API to pull a model it doesn't have.
+- `Ollama/OllamaEmbeddingClient.cs` — wraps `IOllamaApiClient.EmbedAsync`.
+- `LmStudio/LmStudioEmbeddingClient.cs` — raw `POST /v1/embeddings` (OpenAI-compatible), parses
+  `data[].embedding` in `index` order.
 
 ## `src/Aiyara.Harness.Tools/Mcp/`
 
@@ -178,6 +184,31 @@ thinking events) and `IModelCatalog` (list/switch/pull models), so `ChatSession`
 - `McpToolLoader.cs` — connects to every server listed in `mcp.json` over stdio (via the official
   `ModelContextProtocol.Core` client) at startup and exposes each tool as `<server>_<tool>`. A
   server that fails to connect is skipped with a warning logged, not fatal to the harness.
+
+## `src/Aiyara.Harness.Tools/Rag/`
+
+Wired in only if `rag.json`'s `Enabled` is true; exposes retrieval as an opt-in tool
+(`search_documents`) the model calls on demand, the same pattern as MCP tools/skills/`handoff` -
+not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
+
+- `DocumentChunker.cs` — plain character-based sliding-window chunking (`ChunkSize`/`ChunkOverlap`
+  from `rag.json`), no NLP dependency.
+- `RagIndexFile.cs` — the on-disk JSON shape persisted at `<VectorStorePath>/index.json`
+  (`RagIndexFile` > `RagDocumentEntry` > `RagChunkEntry`), keyed by each file's relative path and
+  last-write time.
+- `RagIndex.cs` — in-memory view over an already-built `RagIndexFile`'s documents; `Search` ranks
+  chunks by cosine similarity to a query embedding.
+- `RagIndexBuilder.cs` — `BuildAsync` resolves `DocumentsPath`/`VectorStorePath` through
+  `Workspace.ResolvePath` (`VectorStorePath` defaults to `.aiyara/rag` under the workspace root
+  when empty), discards and fully rebuilds the persisted index if `EmbeddingModel`/`ChunkSize`/
+  `ChunkOverlap` no longer match the current config, and otherwise reuses a file's stored
+  chunks/embeddings unchanged when its last-write time hasn't moved - only new/modified files cost
+  an embedding call. Skips noise directories (same list as `ListFilesTool`, plus `.aiyara` itself)
+  and files over 2 MB.
+- `SearchDocumentsTool.cs` — `BaseTool` named `search_documents`; embeds the query via the active
+  provider's `IEmbeddingClient`, calls `RagIndex.Search`, and returns the top `TopK` chunks as
+  `[<relative path>]\n<chunk text>` blocks. Blocks synchronously on the embedding call - same
+  sync-over-async point `McpTool.Execute` already goes through.
 
 ## Conventions
 

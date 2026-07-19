@@ -21,7 +21,7 @@ public sealed class RagOptions
     public string VectorStorePath { get; init; } = "";
 
     /// <summary>
-    /// Name of the Ollama embedding model used to index and query documents.
+    /// Name of the embedding model (on whichever provider is active) used to index and query documents.
     /// </summary>
     public string EmbeddingModel { get; init; } = "nomic-embed-text";
 

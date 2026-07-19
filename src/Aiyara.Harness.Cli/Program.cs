@@ -8,6 +8,7 @@ using Aiyara.Harness.Models.Enums;
 using Aiyara.Harness.Tools;
 using Aiyara.Harness.Tools.Mcp;
 using Aiyara.Harness.Tools.Providers;
+using Aiyara.Harness.Tools.Rag;
 using Aiyara.Harness.Tools.Providers.LmStudio;
 using Aiyara.Harness.Tools.Providers.Ollama;
 
@@ -76,7 +77,7 @@ try
 {
     var models = UserConfigStore.Load("models.json", new ModelsOptions());
     var mcpOptions = UserConfigStore.Load("mcp.json", new McpOptions());
-    _ = UserConfigStore.Load("rag.json", new RagOptions());
+    var ragOptions = UserConfigStore.Load("rag.json", new RagOptions());
 
     var systemPrompt = new StringBuilder(Persona.SystemPrompt);
     systemPrompt.Append($"\n\n{Persona.WorkingPrinciples}");
@@ -112,6 +113,7 @@ try
 
     IChatEngine chatEngine;
     IModelCatalog modelCatalog;
+    IEmbeddingClient embeddingClient;
 
     // HttpClient's default Timeout is 100 seconds, which a local reasoning model blows through
     // routinely once it starts a long "thinking" phase (e.g. for a planning-style prompt) - the
@@ -142,6 +144,7 @@ try
 
         chatEngine = new OllamaChatEngine(chat);
         modelCatalog = new OllamaModelCatalog(ollama);
+        embeddingClient = new OllamaEmbeddingClient(ollama);
     }
     else
     {
@@ -154,6 +157,7 @@ try
 
         chatEngine = new LmStudioChatEngine(httpClient, models.Default, systemPrompt.ToString());
         modelCatalog = new LmStudioModelCatalog(httpClient);
+        embeddingClient = new LmStudioEmbeddingClient(httpClient);
     }
 
     var taskBoard = new TaskBoard();
@@ -185,6 +189,24 @@ try
     var mcpResult = await McpToolLoader.LoadAsync(mcpOptions.Servers);
     tools.AddRange(mcpResult.Tools);
     mcpClients.AddRange(mcpResult.Clients);
+
+    if (ragOptions.Enabled)
+    {
+        try
+        {
+            var ragIndex = await RagIndexBuilder.BuildAsync(ragOptions, embeddingClient);
+            tools.Add(new SearchDocumentsTool(ragIndex, embeddingClient, ragOptions.EmbeddingModel, ragOptions.TopK));
+
+            Log.Information("RAG index ready: {Files} file(s), {Chunks} chunk(s)", ragIndex.FileCount, ragIndex.ChunkCount);
+        }
+        catch (Exception ex)
+        {
+            // A bad DocumentsPath, an embedding model that isn't actually available, or a corrupt
+            // index file shouldn't stop the harness from starting - same resilience policy already
+            // applied to a broken MCP server or an invalid config file.
+            Log.Warning(ex, "Couldn't build the RAG index - search_documents will not be available this session");
+        }
+    }
 
     chatEngine.OnToolCall += (_, call) => Log.Information("Model wants to call: {ToolName}", call.Function?.Name);
     chatEngine.OnToolResult += (_, call) => Log.Information("Tool returned: {ToolResult}", call.Result);

@@ -1,8 +1,9 @@
 The harness talks to one of two local LLM servers, picked once at startup by `models.json`'s
 `Provider` field (`Ollama` or `LMStudio`) - switching requires a restart, same as any other
 startup-only config. Everything downstream (`ChatSession`, `HandoffTool`, `SlashCommandContext`,
-`ModelSlashCommand`) goes through two interfaces in `src/Aiyara.Harness.Tools/Providers/` instead
-of talking to either server directly, so none of that code needs to know which one is active.
+`ModelSlashCommand`, `RagIndexBuilder` - see [[RAG]]) goes through three interfaces in
+`src/Aiyara.Harness.Tools/Providers/` instead of talking to either server directly, so none of
+that code needs to know which one is active.
 
 ## `IChatEngine`
 
@@ -43,6 +44,19 @@ Lists/switches models, and (where supported) pulls a missing one - backs [[Slash
 | `Ollama/OllamaModelCatalog` | `IOllamaApiClient.ListLocalModelsAsync`/`PullModelAsync` | Reports every model as supporting tools (Ollama's listing endpoint doesn't expose capability info either way). |
 | `LmStudio/LmStudioModelCatalog` | LM Studio's own `/api/v0/models` (richer than the plain OpenAI `/v1/models`) | Exposes per-model `state` (loaded/not-loaded) and `capabilities` (`tool_use`) - confirmed live that non-`tool_use` models exist and get correctly flagged. `PullModelAsync` throws `NotSupportedException` - LM Studio has no API to pull a model it doesn't already have; the error message suggests `lms get <model>` instead. |
 
+## `IEmbeddingClient`
+
+Text -> vectors, for [[RAG]] indexing/search - the only other capability besides chat this harness
+needs from a provider.
+
+| Implementation | Source |
+|---|---|
+| `Ollama/OllamaEmbeddingClient` | `IOllamaApiClient.EmbedAsync` |
+| `LmStudio/LmStudioEmbeddingClient` | Raw `POST /v1/embeddings` (OpenAI-compatible) - confirmed live, standard `{"data":[{"embedding":[...],"index":0}, ...]}` shape. |
+
+Confirmed live on both: Ollama's `nomic-embed-text` and LM Studio's
+`text-embedding-nomic-embed-text-v1.5` both indexed and searched the same document set correctly.
+
 ## Config
 
 `models.json`: `Default` (model name) + `Provider` (`Ollama`/`LMStudio`) - now a `record`, not a
@@ -79,4 +93,4 @@ for a local server with no auth in front of it.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[MCP]] · [[Slash Commands]] · [[Tools]]
+[[Index]] · [[Architecture]] · [[MCP]] · [[RAG]] · [[Slash Commands]] · [[Tools]]

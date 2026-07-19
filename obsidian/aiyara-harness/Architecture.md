@@ -18,8 +18,8 @@ This is the key design split in the whole project - everything either belongs to
   + `Provider: Ollama|LMStudio`, read once at startup - see [[Providers]]), `statusline.json`
   (custom status line command), `trust.json` (approved workspace folders / external paths),
   `logging.json` (`ShowThinking` / `LogThinking`, both off by default - see [[#Logging]]),
-  `mcp.json` (MCP servers to connect to at startup - see [[MCP]]), `rag.json` (reserved, not wired
-  in yet).
+  `mcp.json` (MCP servers to connect to at startup - see [[MCP]]), `rag.json` (document indexing
+  settings for the `search_documents` tool - see [[RAG]]).
 - **Workspace-level**: `AIYARA.md` / `FILES.md` / `TOOLS.md` / `COMMANDS.md` / `MEMORY.md` at the
   project root (auto-loaded into the system prompt at startup — this harness's equivalent of
   Claude Code's `CLAUDE.md`), plus `.aiyara/skills/` (see [[Skills System]]).
@@ -58,4 +58,4 @@ input - see [[Multi-line Input Box]] for the interesting parts of that one.
 
 ## Related
 
-[[Index]] · [[Providers]] · [[MCP]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]
+[[Index]] · [[Providers]] · [[MCP]] · [[RAG]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]
