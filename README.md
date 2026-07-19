@@ -1,9 +1,11 @@
 # Aiyara Harness
 
-A .NET console chat client for a local [Ollama](https://ollama.com) server — streaming responses,
-tool-calling, in-chat slash commands, a workspace-scoped trust/consent model, and a Claude
-Code-inspired Skill system. Confines its file/shell tools to a single workspace folder per run,
-the same way Claude Code confines itself to the folder it's launched in.
+A .NET console chat client for a local [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai)
+server — streaming responses, tool-calling (including tools from any configured
+[MCP](https://modelcontextprotocol.io) server), in-chat slash commands, a workspace-scoped
+trust/consent model, and a Claude Code-inspired Skill system. Confines its file/shell tools to a
+single workspace folder per run, the same way Claude Code confines itself to the folder it's
+launched in.
 
 ## Projects
 

@@ -12,11 +12,11 @@ Same as the `harness config` CLI, without leaving the chat.
 | Subcommand | Parameters | What it does |
 |---|---|---|
 | `path` | none | Prints the config directory (`%USERPROFILE%\.aiyara\`). |
-| `show` | `[category]` optional | Prints current config - all seven categories, or just one. |
+| `show` | `[category]` optional | Prints current config - all eight categories, or just one. |
 | `set` | `<category> <key> <value>` all required | Changes a single value in that category's JSON file. |
 | `edit` | `<category>` required | Opens the category's JSON file in your default editor. |
 
-`category` is one of: `ollama`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
+`category` is one of: `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
 
 **Examples:**
 ```
@@ -24,6 +24,7 @@ Same as the `harness config` CLI, without leaving the chat.
 /config show
 /config show statusline
 /config set ollama AccessToken sk-abc123
+/config set models Provider LMStudio
 /config set models Default qwen3:8b
 /config set logging ShowThinking true
 /config set logging LogThinking true
@@ -32,14 +33,17 @@ Same as the `harness config` CLI, without leaving the chat.
 
 ## `/model`
 
-Lists or switches the active Ollama model.
+Lists or switches the active model on whichever provider is configured (`models.json`'s
+`Provider` - see [[Providers]]). Behavior differs a bit between the two:
 
 **Syntax:** `/model [name]`
 
-| Form | Behavior |
-|---|---|
-| `/model` (no args) | Lists local models, marking the active one. |
-| `/model <name>` | Switches to `<name>`. If it's not already pulled, pulls it from Ollama first (streaming progress), then switches. Persists the choice to `models.json`. |
+| Form | Ollama | LM Studio |
+|---|---|---|
+| `/model` (no args) | Lists local models, marking the active one. | Same, plus flags any model that doesn't advertise `tool_use` capability with `(no tool_use)`. |
+| `/model <name>` | Switches to `<name>`; if not already pulled, pulls it first (streaming progress), then switches. | Switches to `<name>` if already downloaded; LM Studio has no pull API, so a missing model errors with a message suggesting `lms get <name>` instead. |
+
+Either way, switching persists `<name>` to `models.json`'s `Default` without touching `Provider`.
 
 **Examples:**
 ```
@@ -103,4 +107,4 @@ Shows the current workspace root and, for each of `AIYARA.md`/`FILES.md`/`TOOLS.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Tools]]
+[[Index]] · [[Architecture]] · [[Tools]] · [[Providers]] · [[MCP]]

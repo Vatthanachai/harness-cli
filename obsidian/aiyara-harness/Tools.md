@@ -11,6 +11,7 @@ exceptions from `Execute` and turns them into an error string instead of crashin
 | Tasks | `write_tasks`, `update_task` |
 | Skills | `write_skill`, `use_skill`, `list_skills`, `delete_skill` — see [[Skills System]] |
 | Persona switch | `handoff` (`planner` / `reviewer` / `debugger` / `general`) |
+| MCP (dynamic) | One per capability reported by each connected MCP server, named `<server>_<tool>` — see [[MCP]] |
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and
 not currently wired in.
@@ -25,4 +26,4 @@ not currently wired in.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Slash Commands]]
+[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[Providers]]

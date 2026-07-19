@@ -13,10 +13,13 @@
 This is the key design split in the whole project - everything either belongs to the **user**
 (this machine, every project) or the **workspace** (this project only, meant to be committed).
 
-- **User-level**: `%USERPROFILE%\.aiyara\*.json` — `ollama.json` (server URL, access token),
-  `models.json` (default model), `statusline.json` (custom status line command), `trust.json`
-  (approved workspace folders / external paths), `logging.json` (`ShowThinking` / `LogThinking`,
-  both off by default - see [[#Logging]]), `mcp.json`, `rag.json` (both reserved, not wired in yet).
+- **User-level**: `%USERPROFILE%\.aiyara\*.json` — `ollama.json` / `lmstudio.json` (server URL,
+  access token - only one is used, per `models.json`'s `Provider`), `models.json` (default model
+  + `Provider: Ollama|LMStudio`, read once at startup - see [[Providers]]), `statusline.json`
+  (custom status line command), `trust.json` (approved workspace folders / external paths),
+  `logging.json` (`ShowThinking` / `LogThinking`, both off by default - see [[#Logging]]),
+  `mcp.json` (MCP servers to connect to at startup - see [[MCP]]), `rag.json` (reserved, not wired
+  in yet).
 - **Workspace-level**: `AIYARA.md` / `FILES.md` / `TOOLS.md` / `COMMANDS.md` / `MEMORY.md` at the
   project root (auto-loaded into the system prompt at startup — this harness's equivalent of
   Claude Code's `CLAUDE.md`), plus `.aiyara/skills/` (see [[Skills System]]).
@@ -55,4 +58,4 @@ input - see [[Multi-line Input Box]] for the interesting parts of that one.
 
 ## Related
 
-[[Index]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]
+[[Index]] · [[Providers]] · [[MCP]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]

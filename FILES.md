@@ -24,12 +24,15 @@ so the model doesn't need to re-explore the tree every session.
 
 - `Program.cs` — startup: workspace trust check, offers to generate `AIYARA.md` if missing (runs
   one chat turn via `ChatSession.RunInitTurnAsync`), loads `AIYARA.md`/`FILES.md`/`TOOLS.md`/
-  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the Ollama client, registers tools,
-  starts the chat session. Builds the Serilog file sink's path here rather than in
-  `appsettings.json` - `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`,
-  needs to resolve at runtime to the current user's profile, not a path relative to wherever the
-  process happens to be launched from (which is what a relative path in the JSON config would do).
-  `appsettings.json` still owns the console sink and log-level settings.
+  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the chat engine for whichever provider
+  `models.json`'s `Provider` names (`Ollama` or `LMStudio` - see
+  `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in `mcp.json` and appends
+  their tools (see `src/Aiyara.Harness.Tools/Mcp/`), registers the built-in tools, starts the chat
+  session. Builds the Serilog file sink's path here rather than in `appsettings.json` -
+  `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
+  runtime to the current user's profile, not a path relative to wherever the process happens to be
+  launched from (which is what a relative path in the JSON config would do). `appsettings.json`
+  still owns the console sink and log-level settings.
 - `ChatSession.cs` — the interactive chat REPL loop; also exposes `RunInitTurnAsync` for the
   one-off `AIYARA.md` generation turn at startup. `RunSlashCommandAsync` resolves `/<name>` against
   built-in commands first, then falls back to treating `<name>` as a skill (`/<skill-name> [extra
@@ -102,8 +105,12 @@ so the model doesn't need to re-explore the tree every session.
   `UseSkillTool`/`ListSkillsTool` in Tools need to read it, and Tools cannot depend on Cli. `Find`
   looks up a skill by name regardless of enabled state - used by `ChatSession`/`SlashInputReader`
   to resolve `/<skill-name>` as a slash command.
-- `ModelsOptions.cs`, `OllamaConnectionOptions.cs`, `McpOptions.cs`, `RagOptions.cs`,
-  `StatuslineOptions.cs`, `LoggingOptions.cs` — option types stored as JSON config files.
+- `ModelsOptions.cs`, `OllamaConnectionOptions.cs`, `LmStudioConnectionOptions.cs`, `McpOptions.cs`,
+  `RagOptions.cs`, `StatuslineOptions.cs`, `LoggingOptions.cs` — option types stored as JSON config
+  files. `ModelsOptions.Provider` (`Enums/Provider.cs`: `Ollama`/`LMStudio`) picks which server
+  `Program.cs` builds a chat engine for at startup - read once, so switching it requires a
+  restart; `ModelsOptions` is a `record` (not a plain class) so `SlashCommandContext.SwitchModel`
+  can update `Default` via a `with`-expression without clobbering `Provider`.
   `LoggingOptions` (`logging.json`) holds two independent, both-off-by-default toggles
   `ChatSession.FlushThinking` checks fresh on every flush: `ShowThinking` (display the model's
   reasoning live in the terminal) and `LogThinking` (also write it to the log file). Neither
@@ -126,7 +133,8 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
 - `RunCommandTool.cs` — runs an external shell command (e.g. `dotnet build`), always confirmed.
 - `HandoffTool.cs` — switches the model's own working mode to a built-in specialist persona
   (`planner`, `reviewer`, `debugger`, or back to `general`) by swapping a marked-off block in the
-  live `Chat`'s system message; conversation history is untouched.
+  live chat engine's (`IChatEngine`, see `Providers/` below) system message; conversation history
+  is untouched. Provider-agnostic - works the same against Ollama or LM Studio.
 - `WriteTasksTool.cs`, `UpdateTaskTool.cs` — create/update the shared `TaskBoard`.
 - `WriteSkillTool.cs`, `DeleteSkillTool.cs`, `UseSkillTool.cs`, `ListSkillsTool.cs` — create/update,
   permanently delete, load, and list skills (see `SkillStore.cs`). Both take an optional `scope`
@@ -136,6 +144,40 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
   scopes at once.
 - `DateTimeTool.cs` — current date/time.
 - `CommonTools.cs` — excluded from the build (see `Aiyara.Harness.Tools.csproj`); not currently wired in.
+
+## `src/Aiyara.Harness.Tools/Providers/`
+
+Abstracts the chat backend behind `IChatEngine` (message history, streaming, tool-calling,
+thinking events) and `IModelCatalog` (list/switch/pull models), so `ChatSession`, `HandoffTool`,
+`SlashCommandContext` and `ModelSlashCommand` don't know or care which provider is active -
+`Program.cs` picks the implementation once at startup based on `ModelsOptions.Provider`.
+
+- `IChatEngine.cs`, `IModelCatalog.cs` — the two interfaces.
+- `Ollama/OllamaChatEngine.cs`, `Ollama/OllamaModelCatalog.cs` — thin forwarding wrappers around
+  the real `OllamaSharp.Chat` / `IOllamaApiClient` (all the actual behavior is OllamaSharp's).
+- `LmStudio/LmStudioChatEngine.cs` — hand-rolled client for LM Studio's OpenAI-compatible
+  `/v1/chat/completions` (LM Studio has no equivalent of Ollama's native `/api/chat`). Owns the
+  full streaming + agentic tool-call loop itself over a raw `HttpClient`/SSE, so it presents the
+  same `IChatEngine` surface `ChatSession` already expects from Ollama.
+- `LmStudio/LmStudioToolCallAccumulator.cs` — accumulates streamed `tool_calls[]` deltas by their
+  `index` into complete tool calls (LM Studio streams a call's `id`/`name` once, then only
+  `arguments` fragments after).
+- `LmStudio/LmStudioJson.cs` — request/response JSON plumbing: message/tool-schema translation
+  (including routing a tool result's image through a synthetic follow-up `user` message, since LM
+  Studio rejects images on a `tool`-role message) and SSE frame parsing.
+- `LmStudio/LmStudioModelCatalog.cs` — uses LM Studio's own `/api/v0/models` (richer than the
+  plain OpenAI `/v1/models`) for loaded-state and `tool_use` capability per model; `PullModelAsync`
+  throws `NotSupportedException` since LM Studio has no API to pull a model it doesn't have.
+
+## `src/Aiyara.Harness.Tools/Mcp/`
+
+- `McpTool.cs` — wraps one MCP server's tool as an ordinary `BaseTool`: translates its JSON Schema
+  into OllamaSharp's `Parameters`/`Property` shape (flat Type/Description/Enum only - same
+  fidelity every hand-written tool here already has), and `Execute` proxies to
+  `McpClient.CallToolAsync`, blocking on it since `IInvokableTool.InvokeMethod` is synchronous.
+- `McpToolLoader.cs` — connects to every server listed in `mcp.json` over stdio (via the official
+  `ModelContextProtocol.Core` client) at startup and exposes each tool as `<server>_<tool>`. A
+  server that fails to connect is skipped with a warning logged, not fatal to the harness.
 
 ## Conventions
 
