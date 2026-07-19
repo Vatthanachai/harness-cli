@@ -6,6 +6,7 @@ using Aiyara.Harness.Cli.Commands;
 using Aiyara.Harness.Models.Config;
 using Aiyara.Harness.Models.Enums;
 using Aiyara.Harness.Tools;
+using Aiyara.Harness.Tools.Mcp;
 using Aiyara.Harness.Tools.Providers;
 using Aiyara.Harness.Tools.Providers.LmStudio;
 using Aiyara.Harness.Tools.Providers.Ollama;
@@ -69,10 +70,12 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.File(logFilePath, rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
+var mcpClients = new List<IAsyncDisposable>();
+
 try
 {
     var models = UserConfigStore.Load("models.json", new ModelsOptions());
-    _ = UserConfigStore.Load("mcp.json", new McpOptions());
+    var mcpOptions = UserConfigStore.Load("mcp.json", new McpOptions());
     _ = UserConfigStore.Load("rag.json", new RagOptions());
 
     var systemPrompt = new StringBuilder(Persona.SystemPrompt);
@@ -179,6 +182,10 @@ try
         new ListSkillsTool(skillRegistry)
     ];
 
+    var mcpResult = await McpToolLoader.LoadAsync(mcpOptions.Servers);
+    tools.AddRange(mcpResult.Tools);
+    mcpClients.AddRange(mcpResult.Clients);
+
     chatEngine.OnToolCall += (_, call) => Log.Information("Model wants to call: {ToolName}", call.Function?.Name);
     chatEngine.OnToolResult += (_, call) => Log.Information("Tool returned: {ToolResult}", call.Result);
 
@@ -225,6 +232,9 @@ catch (Exception ex)
 }
 finally
 {
+    foreach (var client in mcpClients)
+        await client.DisposeAsync();
+
     Log.CloseAndFlush();
 }
 

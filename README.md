@@ -54,7 +54,7 @@ time each is read:
 | `statusline.json` | `Command` — shell command run each turn to build the status line under the input box (PowerShell on Windows, `/bin/sh` elsewhere; receives `{Model, ToolsEnabled, ToolsTotal, Cwd}` as JSON on stdin). Empty = the built-in `model: ... - tools x/y` text. |
 | `trust.json` | `TrustedWorkspaces`, `AllowedExternalPaths` — folders and files you've already approved; managed automatically by the trust/consent prompts, not usually hand-edited. |
 | `logging.json` | `ShowThinking` — whether the model's thinking/reasoning is displayed live in the terminal. `LogThinking` — whether it's also written to the log (console + rolling file). Two independent toggles; **both off by default.** |
-| `mcp.json` | `Servers` — MCP server definitions (name, command, args, env). Reserved for upcoming MCP support; not yet wired into the chat loop. |
+| `mcp.json` | `Servers` — [MCP](https://modelcontextprotocol.io) server definitions (`Name`, `Command`, `Args`, `Env`), each launched over stdio at startup. Every tool the server reports is exposed to the model as `<Name>_<tool>` (e.g. a server named `github` exposing `search_issues` becomes `github_search_issues`), alongside the built-in tools — `/tools` lists and toggles them the same way. A server that fails to launch or complete the MCP handshake is skipped with a warning logged, rather than stopping the harness from starting. |
 | `rag.json` | `Enabled`, `DocumentsPath`, `VectorStorePath`, `EmbeddingModel`, `ChunkSize`, `ChunkOverlap`, `TopK`. Reserved for upcoming retrieval-augmented generation support; not yet wired into the chat loop. |
 
 Edit them from the command line without starting a chat session:
@@ -110,6 +110,8 @@ The model can call these during a conversation (registered in `src/Aiyara.Harnes
 - `handoff` — switch the model's own working mode to a built-in specialist persona (`planner`, `reviewer`, `debugger`, or back to `general`).
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and not currently wired in.
+
+Plus, dynamically, one tool per capability reported by each connected [MCP](#configuration) server (`mcp.json`), named `<server>_<tool>`.
 
 ## Skills
 
