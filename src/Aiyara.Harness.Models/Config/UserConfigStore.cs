@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Aiyara.Harness.Models.Config;
 
@@ -13,7 +14,8 @@ public static class UserConfigStore
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     /// <summary>

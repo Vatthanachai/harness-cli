@@ -4,7 +4,11 @@ using System.Text;
 using Aiyara.Harness.Cli;
 using Aiyara.Harness.Cli.Commands;
 using Aiyara.Harness.Models.Config;
+using Aiyara.Harness.Models.Enums;
 using Aiyara.Harness.Tools;
+using Aiyara.Harness.Tools.Providers;
+using Aiyara.Harness.Tools.Providers.LmStudio;
+using Aiyara.Harness.Tools.Providers.Ollama;
 
 using Microsoft.Extensions.Configuration;
 
@@ -67,21 +71,9 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var ollamaConnection = UserConfigStore.Load("ollama.json", new OllamaConnectionOptions());
     var models = UserConfigStore.Load("models.json", new ModelsOptions());
     _ = UserConfigStore.Load("mcp.json", new McpOptions());
     _ = UserConfigStore.Load("rag.json", new RagOptions());
-
-    // HttpClient's default Timeout is 100 seconds, which a local reasoning model blows through
-    // routinely once it starts a long "thinking" phase (e.g. for a planning-style prompt) - the
-    // request gets aborted mid-stream and the exception, uncaught, used to take the whole harness
-    // down. Local generation has no reason to be bounded like a web API call.
-    var httpClient = new HttpClient { BaseAddress = new Uri(ollamaConnection.BaseUrl), Timeout = TimeSpan.FromMinutes(10) };
-    if (!string.IsNullOrWhiteSpace(ollamaConnection.AccessToken))
-        httpClient.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", ollamaConnection.AccessToken);
-
-    var ollama = new OllamaApiClient(httpClient, models.Default);
 
     var systemPrompt = new StringBuilder(Persona.SystemPrompt);
     systemPrompt.Append($"\n\n{Persona.WorkingPrinciples}");
@@ -115,17 +107,51 @@ try
         systemPrompt.Append($"\n\n# {heading} ({fileName})\n\n{content}");
     }
 
-    // 4096 is nowhere near enough for a "thinking" model: reasoning content for a non-trivial
-    // prompt (e.g. "make a plan for X") easily runs past it, forcing Ollama's context to shift
-    // mid-thought and derailing the model so it never reaches a final answer. Confirmed by hand:
-    // the same planning prompt at num_ctx=4096 was still streaming pure thinking tokens past 3
-    // minutes with no end in sight, while at num_ctx=32768 it reached real answer content well
-    // within the same window.
-    var chat = new Chat(ollama, systemPrompt.ToString())
+    IChatEngine chatEngine;
+    IModelCatalog modelCatalog;
+
+    // HttpClient's default Timeout is 100 seconds, which a local reasoning model blows through
+    // routinely once it starts a long "thinking" phase (e.g. for a planning-style prompt) - the
+    // request gets aborted mid-stream and the exception, uncaught, used to take the whole harness
+    // down. Local generation has no reason to be bounded like a web API call - applies to both
+    // providers below.
+    if (models.Provider == Provider.Ollama)
     {
-        Think = ThinkValue.High,
-        Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 32768 }
-    };
+        var ollamaConnection = UserConfigStore.Load("ollama.json", new OllamaConnectionOptions());
+        var httpClient = new HttpClient { BaseAddress = new Uri(ollamaConnection.BaseUrl), Timeout = TimeSpan.FromMinutes(10) };
+        if (!string.IsNullOrWhiteSpace(ollamaConnection.AccessToken))
+            httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", ollamaConnection.AccessToken);
+
+        var ollama = new OllamaApiClient(httpClient, models.Default);
+
+        // 4096 is nowhere near enough for a "thinking" model: reasoning content for a non-trivial
+        // prompt (e.g. "make a plan for X") easily runs past it, forcing Ollama's context to shift
+        // mid-thought and derailing the model so it never reaches a final answer. Confirmed by hand:
+        // the same planning prompt at num_ctx=4096 was still streaming pure thinking tokens past 3
+        // minutes with no end in sight, while at num_ctx=32768 it reached real answer content well
+        // within the same window.
+        var chat = new Chat(ollama, systemPrompt.ToString())
+        {
+            Think = ThinkValue.High,
+            Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 32768 }
+        };
+
+        chatEngine = new OllamaChatEngine(chat);
+        modelCatalog = new OllamaModelCatalog(ollama);
+    }
+    else
+    {
+        var lmStudioConnection = UserConfigStore.Load("lmstudio.json", new LmStudioConnectionOptions());
+        var baseUrl = lmStudioConnection.BaseUrl.TrimEnd('/') + "/";
+        var httpClient = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromMinutes(10) };
+        if (!string.IsNullOrWhiteSpace(lmStudioConnection.AccessToken))
+            httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", lmStudioConnection.AccessToken);
+
+        chatEngine = new LmStudioChatEngine(httpClient, models.Default, systemPrompt.ToString());
+        modelCatalog = new LmStudioModelCatalog(httpClient);
+    }
 
     var taskBoard = new TaskBoard();
 
@@ -144,7 +170,7 @@ try
         new CommandsDocumentTool(),
         new MemoryDocumentTool(),
         new RunCommandTool(),
-        new HandoffTool(chat),
+        new HandoffTool(chatEngine),
         new WriteTasksTool(taskBoard),
         new UpdateTaskTool(taskBoard),
         new WriteSkillTool(),
@@ -153,8 +179,8 @@ try
         new ListSkillsTool(skillRegistry)
     ];
 
-    chat.OnToolCall += (_, call) => Log.Information("Model wants to call: {ToolName}", call.Function?.Name);
-    chat.OnToolResult += (_, call) => Log.Information("Tool returned: {ToolResult}", call.Result);
+    chatEngine.OnToolCall += (_, call) => Log.Information("Model wants to call: {ToolName}", call.Function?.Name);
+    chatEngine.OnToolResult += (_, call) => Log.Information("Tool returned: {ToolResult}", call.Result);
 
     var toolRegistry = new ToolRegistry(tools);
 
@@ -171,8 +197,8 @@ try
     using var terminalUI = new TerminalUI(slashCommands.All.Count);
     terminalUI.Initialize(models.Default, Workspace.Root);
 
-    var slashContext = new SlashCommandContext(ollama, chat, toolRegistry, skillRegistry, terminalUI);
-    var chatSession = new ChatSession(chat, toolRegistry, slashCommands, slashContext, terminalUI);
+    var slashContext = new SlashCommandContext(modelCatalog, chatEngine, toolRegistry, skillRegistry, terminalUI);
+    var chatSession = new ChatSession(chatEngine, toolRegistry, slashCommands, slashContext, terminalUI);
 
     if (!File.Exists(AiyaraDocument.PathAtWorkspaceRoot))
     {

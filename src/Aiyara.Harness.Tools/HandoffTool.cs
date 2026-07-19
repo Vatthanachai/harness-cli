@@ -1,4 +1,5 @@
-using OllamaSharp;
+using Aiyara.Harness.Tools.Providers;
+
 using OllamaSharp.Models.Chat;
 
 namespace Aiyara.Harness.Tools;
@@ -40,9 +41,9 @@ public class HandoffTool : BaseTool
             "is actually true, then fix it and confirm the original symptom is actually gone.")
     ];
 
-    private readonly Chat _chat;
+    private readonly IChatEngine _chat;
 
-    public HandoffTool(Chat chat)
+    public HandoffTool(IChatEngine chat)
     {
         _chat = chat;
 

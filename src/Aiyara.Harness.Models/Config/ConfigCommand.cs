@@ -20,6 +20,7 @@ public static class ConfigCommand
     private static readonly Dictionary<string, Func<string>> Categories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ollama"] = () => Seed("ollama.json", new OllamaConnectionOptions()),
+        ["lmstudio"] = () => Seed("lmstudio.json", new LmStudioConnectionOptions()),
         ["models"] = () => Seed("models.json", new ModelsOptions()),
         ["mcp"] = () => Seed("mcp.json", new McpOptions()),
         ["rag"] = () => Seed("rag.json", new RagOptions()),
@@ -76,7 +77,7 @@ public static class ConfigCommand
     {
         if (args.Length < 3)
         {
-            Console.Error.WriteLine("Usage: harness config set <ollama|models|mcp|rag|statusline|trust> <key> <value>");
+            Console.Error.WriteLine("Usage: harness config set <ollama|lmstudio|models|mcp|rag|statusline|trust> <key> <value>");
             return 1;
         }
 
@@ -108,7 +109,7 @@ public static class ConfigCommand
     {
         if (category is null || !Categories.TryGetValue(category, out var seed))
         {
-            Console.Error.WriteLine("Usage: harness config edit <ollama|models|mcp|rag>");
+            Console.Error.WriteLine("Usage: harness config edit <ollama|lmstudio|models|mcp|rag>");
             return category is null ? 1 : UnknownCategory(category);
         }
 
@@ -164,7 +165,7 @@ public static class ConfigCommand
               config set <category> <key> <value>  Change a single value.
               config edit <category>                Open a category's JSON file in your default editor.
 
-            Categories: ollama, models, mcp, rag, statusline, trust, logging
+            Categories: ollama, lmstudio, models, mcp, rag, statusline, trust, logging
             """);
     }
 }

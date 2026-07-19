@@ -2,8 +2,7 @@ using System.Text;
 
 using Aiyara.Harness.Cli.Commands;
 using Aiyara.Harness.Models.Config;
-
-using OllamaSharp;
+using Aiyara.Harness.Tools.Providers;
 
 using Serilog;
 
@@ -12,7 +11,7 @@ namespace Aiyara.Harness.Cli;
 /// <summary>
 /// Drives the console read-eval-print loop with Claude Code-inspired output formatting.
 /// </summary>
-public sealed class ChatSession(Chat chat, ToolRegistry toolRegistry, SlashCommandRegistry registry, SlashCommandContext context, TerminalUI ui)
+public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, SlashCommandRegistry registry, SlashCommandContext context, TerminalUI ui)
 {
     private readonly StringBuilder _thinkBuffer = new();
     private readonly Queue<string> _pendingImageAttachments = new();

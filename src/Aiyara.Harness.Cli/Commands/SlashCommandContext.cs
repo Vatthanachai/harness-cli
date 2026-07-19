@@ -1,23 +1,22 @@
 using Aiyara.Harness.Models.Config;
-
-using OllamaSharp;
+using Aiyara.Harness.Tools.Providers;
 
 namespace Aiyara.Harness.Cli.Commands;
 
 /// <summary>
-/// Shared state slash command handlers act on: the live Ollama client and the active chat session.
+/// Shared state slash command handlers act on: the live model catalog and the active chat session.
 /// </summary>
-public sealed class SlashCommandContext(IOllamaApiClient ollama, Chat chat, ToolRegistry toolRegistry, SkillRegistry skillRegistry, TerminalUI terminalUI)
+public sealed class SlashCommandContext(IModelCatalog modelCatalog, IChatEngine chat, ToolRegistry toolRegistry, SkillRegistry skillRegistry, TerminalUI terminalUI)
 {
     /// <summary>
-    /// The Ollama client the running session talks to.
+    /// Lists/switches models on the provider (Ollama or LM Studio) the running session talks to.
     /// </summary>
-    public IOllamaApiClient Ollama { get; } = ollama;
+    public IModelCatalog ModelCatalog { get; } = modelCatalog;
 
     /// <summary>
     /// The active chat conversation.
     /// </summary>
-    public Chat Chat { get; } = chat;
+    public IChatEngine Chat { get; } = chat;
 
     /// <summary>
     /// The tools available to the session and which of them are currently enabled.
@@ -41,6 +40,7 @@ public sealed class SlashCommandContext(IOllamaApiClient ollama, Chat chat, Tool
     public void SwitchModel(string modelName)
     {
         Chat.Model = modelName;
-        UserConfigStore.Save("models.json", new ModelsOptions { Default = modelName });
+        var current = UserConfigStore.Load("models.json", new ModelsOptions());
+        UserConfigStore.Save("models.json", current with { Default = modelName });
     }
 }

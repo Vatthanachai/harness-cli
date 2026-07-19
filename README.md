@@ -17,7 +17,7 @@ the same way Claude Code confines itself to the folder it's launched in.
 ## Requirements
 
 - .NET SDK `10.0.301` (see `global.json`)
-- An [Ollama](https://ollama.com) server reachable from the machine running the CLI (defaults to `http://localhost:11434`)
+- Either an [Ollama](https://ollama.com) server reachable from the machine running the CLI (defaults to `http://localhost:11434`), or an [LM Studio](https://lmstudio.ai) server (`lms server start`, defaults to `http://localhost:1234`) — see [Choosing a provider](#choosing-a-provider)
 
 ## Running
 
@@ -49,7 +49,8 @@ time each is read:
 | File | Options |
 |---|---|
 | `ollama.json` | `BaseUrl` — Ollama server URL. `AccessToken` — optional bearer token sent as `Authorization: Bearer <token>`. |
-| `models.json` | `Default` — model used for chat completions, e.g. `qwen3:8b`. |
+| `lmstudio.json` | `BaseUrl` — LM Studio server URL. `AccessToken` — optional bearer token sent as `Authorization: Bearer <token>`. |
+| `models.json` | `Default` — model used for chat completions, e.g. `qwen3:8b`. `Provider` — `Ollama` or `LMStudio`; which server the harness talks to. Read once at startup — restart the harness after changing it. |
 | `statusline.json` | `Command` — shell command run each turn to build the status line under the input box (PowerShell on Windows, `/bin/sh` elsewhere; receives `{Model, ToolsEnabled, ToolsTotal, Cwd}` as JSON on stdin). Empty = the built-in `model: ... - tools x/y` text. |
 | `trust.json` | `TrustedWorkspaces`, `AllowedExternalPaths` — folders and files you've already approved; managed automatically by the trust/consent prompts, not usually hand-edited. |
 | `logging.json` | `ShowThinking` — whether the model's thinking/reasoning is displayed live in the terminal. `LogThinking` — whether it's also written to the log (console + rolling file). Two independent toggles; **both off by default.** |
@@ -65,7 +66,19 @@ harness config set <category> <key> <value>  # change a single value
 harness config edit <category>                # open a category's JSON file in your default editor
 ```
 
-`category` is one of `ollama`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
+`category` is one of `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
+
+### Choosing a provider
+
+```bash
+harness config set models Provider LMStudio   # or: Ollama
+```
+
+then restart the harness — `Provider` is only read at startup. LM Studio's "just-in-time model
+loading" means requesting a model that's downloaded but not currently loaded starts it
+automatically; there's no separate load step needed. LM Studio has no API for pulling a model it
+doesn't already have (unlike Ollama's registry pull) — download it first with `lms get <model>`
+or the LM Studio app, then `/model <name>` will find it.
 
 ### In-chat slash commands
 
@@ -73,10 +86,10 @@ While chatting, type `/` to see the list of available commands as you type (auto
 live, Tab to complete):
 
 - `/config` — same as the `harness config` CLI above, without leaving the chat (e.g. `/config set ollama AccessToken <token>`).
-- `/model` — list models available on the Ollama server, or switch to one:
-  - `/model` lists local models, marking the active one.
-  - `/model <name>` switches to `<name>` if it's already pulled; otherwise pulls it from Ollama first (streaming progress), then switches. If Ollama can't be reached or doesn't have the model, you'll get a clear error instead.
-  - Switching also persists the choice to `models.json` as the new default.
+- `/model` — list models available on the active provider (Ollama or LM Studio), or switch to one:
+  - `/model` lists local models, marking the active one; on LM Studio, models that don't advertise `tool_use` capability are flagged `(no tool_use)` since this harness always sends tool definitions.
+  - `/model <name>` switches to `<name>` if it's already available; on Ollama, a missing model is pulled first (streaming progress); LM Studio has no pull API, so a missing model instead errors with a message suggesting `lms get <name>`. If the server can't be reached, you'll get a clear error instead.
+  - Switching also persists the choice to `models.json` as the new default (without touching `Provider`).
 - `/tools` — list tools and their enabled state, or `/tools on|off <name>` to toggle one for the rest of the session.
 - `/skills` — list skills and their enabled state, or `/skills on|off <name>` to toggle one (see [Skills](#skills) below).
 - `/clear` — reset the conversation back to just the system message and re-show the welcome screen. Doesn't touch tool/skill enable state or the task list.
