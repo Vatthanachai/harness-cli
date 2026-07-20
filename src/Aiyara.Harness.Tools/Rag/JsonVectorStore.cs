@@ -139,7 +139,19 @@ public sealed class JsonVectorStore(string storeDir, string embeddingModel, int 
         await File.WriteAllTextAsync(PathFor(collection), JsonSerializer.Serialize(file, SerializerOptions), ct);
     }
 
-    private string PathFor(string collection) => Path.Combine(storeDir, $"{collection}.json");
+    /// <summary>
+    /// <paramref name="collection"/> is interpolated directly into a filename - restricted to
+    /// alphanumeric/underscore so it can't be used to escape <c>storeDir</c> (e.g. <c>"../secrets"</c>)
+    /// or collide with an unrelated file.
+    /// </summary>
+    private string PathFor(string collection)
+    {
+        if (collection.Length == 0 || !collection.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
+            throw new ArgumentException(
+                $"Collection name '{collection}' must be alphanumeric/underscore only.", nameof(collection));
+
+        return Path.Combine(storeDir, $"{collection}.json");
+    }
 
     private RagIndexFile NewFile() =>
         new() { EmbeddingModel = embeddingModel, ChunkSize = chunkSize, ChunkOverlap = chunkOverlap };
