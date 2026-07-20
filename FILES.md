@@ -241,6 +241,26 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   as `[<relative path>]\n<chunk text>` blocks. Blocks synchronously on both calls - same
   sync-over-async point `McpTool.Execute` already goes through.
 
+## `tests/Aiyara.Harness.Tools.Tests/`
+
+xunit project (`dotnet test`), the only automated tests in the repo so far - covers the RAG
+`IVectorStore` implementations, since those are easy to get subtly wrong silently (a ranking bug or
+a stale-cache bug doesn't throw, it just returns slightly wrong results).
+
+- `Rag/VectorStoreContractTests.cs` — abstract base every `IVectorStore` implementation must satisfy
+  identically: round-trip, replace-not-append on re-upsert, remove, list, search ranking, and
+  config-mismatch wipes the collection. Subclasses only implement `CreateStoreAsync`; each `[Fact]`
+  gets an isolated temp `StoreDir` via `IAsyncLifetime`.
+- `Rag/JsonVectorStoreTests.cs` — runs the contract suite against `JsonVectorStore`, plus a
+  `[Theory]` asserting invalid collection names (`../secrets`, empty, containing `/`, etc.) are
+  rejected by `PathFor` before ever touching disk.
+- `Rag/SqliteVectorStoreTests.cs` / `Rag/SqliteVecVectorStoreTests.cs` — run the same contract suite
+  against `SqliteVectorStore`/`SqliteVecVectorStore` respectively.
+- `Rag/VectorStoreRankingCrossValidationTests.cs` — builds the same random dataset into both
+  `SqliteVectorStore` and `SqliteVecVectorStore` and asserts identical top-K ranking and matching
+  cosine scores (within `1e-3`) - `SqliteVec`'s native KNN and `Sqlite`'s brute-force C# loop are two
+  implementations of the same contract, so disagreement would mean one of them is wrong.
+
 ## Conventions
 
 - Config lives under `%USERPROFILE%\.aiyara\` as JSON, read via `UserConfigStore.Load`, which

@@ -4,4 +4,7 @@
     <Project Path="src/Aiyara.Harness.Models/Aiyara.Harness.Models.csproj" />
     <Project Path="src/Aiyara.Harness.Tools/Aiyara.Harness.Tools.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aiyara.Harness.Tools.Tests/Aiyara.Harness.Tools.Tests.csproj" />
+  </Folder>
 </Solution>

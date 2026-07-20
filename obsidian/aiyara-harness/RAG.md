@@ -104,6 +104,16 @@ Takeaways:
   once a workspace's document count grows large enough that search latency is noticeable, not as a
   blanket default.
 
+## Automated tests
+
+`tests/Aiyara.Harness.Tools.Tests/Rag/` (`dotnet test`) - the repo's first test project, added
+specifically because RAG's `IVectorStore` implementations fail *silently* when subtly wrong (a stale
+cache or a ranking bug returns slightly-off results, it doesn't throw). `VectorStoreContractTests`
+is an abstract base run against all three implementations (round-trip, replace-on-upsert, remove,
+list, search ranking, config-mismatch wipe); `VectorStoreRankingCrossValidationTests` cross-checks
+`SqliteVec`'s native KNN against `Sqlite`'s brute-force cosine on the same random dataset; and
+`JsonVectorStoreTests` covers the `PathFor` collection-name validation. 36 tests total.
+
 ## Verified live, on both providers
 
 Indexed the same 25-file/255-chunk document set with **both** `nomic-embed-text` (Ollama) and

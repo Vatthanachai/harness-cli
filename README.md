@@ -14,7 +14,7 @@ Code confines itself to the folder it's launched in.
 | `src/Aiyara.Harness.Cli` | Console entry point, chat REPL, slash commands, persona/system prompt, console rendering. |
 | `src/Aiyara.Harness.Models` | Config option types, the JSON-backed user config store, workspace/trust/consent, skills, tasks. |
 | `src/Aiyara.Harness.Tools` | Tools exposed to the model (files, images, skills, tasks, shell commands, statusline, ...). |
-| `tests/` | Currently empty — no test project exists yet. |
+| `tests/Aiyara.Harness.Tools.Tests` | xunit tests — currently covers the RAG `IVectorStore` implementations. Run with `dotnet test`. |
 
 ## Requirements
 
