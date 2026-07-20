@@ -93,13 +93,24 @@ Takeaways:
   (vec0 has no ANN index), but native/SIMD execution has a much smaller per-row constant than the
   C# loop. This is the operation a user actually waits on per query, so it's the number that matters
   most for picking a backend at scale.
-- **Insert is 2.8x-9.6x *slower* with `SqliteVec`** (15.8s vs 1.65s at 20k chunks) - likely from
-  opening a fresh `SqliteConnection` (and reloading the native extension via `LoadVector()`) on every
-  single `UpsertDocumentAsync` call, plus vec0's own per-row insert overhead vs. a plain BLOB write.
-  In practice this is dwarfed by the embedding API call that precedes every upsert (tens to hundreds
-  of ms of network/inference latency per file) - but a full/initial reindex of a large corpus really
-  will take noticeably longer to *persist* on `SqliteVec` than on `Sqlite`, independent of embedding
-  time.
+- **Insert is 2.8x-9.6x *slower* with `SqliteVec`** (15.8s vs 1.65s at 20k chunks). In practice this
+  is dwarfed by the embedding API call that precedes every upsert (tens to hundreds of ms of
+  network/inference latency per file) - but a full/initial reindex of a large corpus really will
+  take noticeably longer to *persist* on `SqliteVec` than on `Sqlite`, independent of embedding time.
+  Originally suspected this was mostly `SqliteConnection`-open + `LoadVector()` overhead repeated on
+  every call (both stores opened a fresh connection per `IVectorStore` method), so both stores were
+  switched to a pooled/reused-connection design (`SqliteConnectionPool`, opens+configures a
+  connection once and rents it back out per call instead of reopening). **That hypothesis turned out
+  to be mostly wrong**: re-benchmarked after pooling and insert time only dropped ~3-4% (1733ms ->
+  1665ms at 2k chunks; 6767ms -> 6581ms at 8k). `Microsoft.Data.Sqlite` already pools the underlying
+  native handle per connection string by default, so the old per-call `new SqliteConnection()` was
+  apparently already cheap - the real cost is more likely the sheer number of individually-awaited
+  `INSERT`/transaction round-trips (2 inserts + 1 transaction commit per chunk), not connection
+  setup. Kept the pooling change anyway (it's strictly less wasteful and was verified safe under 25
+  concurrent callers via a scratch stress test - no serialization regression, WAL still lets
+  concurrent readers/writers through), but it doesn't meaningfully close the insert gap. Batching
+  multiple chunks/documents into fewer transactions would be the next thing to try if this gap ever
+  actually matters in practice.
 - `Backend` still defaults to `Json` for backward compatibility - `SqliteVec` is worth recommending
   once a workspace's document count grows large enough that search latency is noticeable, not as a
   blanket default.

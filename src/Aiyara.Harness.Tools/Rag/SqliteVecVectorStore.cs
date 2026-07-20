@@ -23,7 +23,7 @@ namespace Aiyara.Harness.Tools.Rag;
 /// </remarks>
 public sealed class SqliteVecVectorStore : IVectorStore
 {
-    private readonly string _connectionString;
+    private readonly SqliteConnectionPool _pool;
     private readonly string _embeddingModel;
     private readonly int _chunkSize;
     private readonly int _chunkOverlap;
@@ -33,7 +33,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
     private SqliteVecVectorStore(string dbPath, string embeddingModel, int chunkSize, int chunkOverlap)
     {
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        var connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        _pool = new SqliteConnectionPool(connectionString, ConfigureConnectionAsync);
         _embeddingModel = embeddingModel;
         _chunkSize = chunkSize;
         _chunkOverlap = chunkOverlap;
@@ -53,14 +54,15 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
         var store = new SqliteVecVectorStore(dbPath, options.EmbeddingModel, options.ChunkSize, options.ChunkOverlap);
 
-        await using var connection = await store.OpenConnectionAsync(ct);
-        await store.InitializeSchemaAsync(connection, ct);
+        await using var rented = await store._pool.RentAsync(ct);
+        await store.InitializeSchemaAsync(rented.Connection, ct);
         return store;
     }
 
     public async Task<RagDocumentEntry?> GetDocumentAsync(string collection, string relativePath, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var rented = await _pool.RentAsync(ct);
+        var connection = rented.Connection;
         await EnsureCollectionValidAsync(collection, connection, ct);
 
         DateTime lastWriteUtc;
@@ -102,7 +104,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
     public async Task UpsertDocumentAsync(string collection, RagDocumentEntry document, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var rented = await _pool.RentAsync(ct);
+        var connection = rented.Connection;
         await EnsureCollectionValidAsync(collection, connection, ct);
 
         if (document.Chunks.Count > 0)
@@ -158,7 +161,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
     public async Task RemoveDocumentAsync(string collection, string relativePath, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var rented = await _pool.RentAsync(ct);
+        var connection = rented.Connection;
         await EnsureCollectionValidAsync(collection, connection, ct);
 
         await using var transaction = connection.BeginTransaction();
@@ -180,7 +184,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
 
     public async Task<IReadOnlyList<string>> ListDocumentPathsAsync(string collection, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var rented = await _pool.RentAsync(ct);
+        var connection = rented.Connection;
         await EnsureCollectionValidAsync(collection, connection, ct);
 
         await using var command = connection.CreateCommand();
@@ -196,7 +201,8 @@ public sealed class SqliteVecVectorStore : IVectorStore
     public async Task<IReadOnlyList<(string Path, string Text, float Score)>> SearchAsync(
         string collection, float[] query, int topK, CancellationToken ct = default)
     {
-        await using var connection = await OpenConnectionAsync(ct);
+        await using var rented = await _pool.RentAsync(ct);
+        var connection = rented.Connection;
         await EnsureCollectionValidAsync(collection, connection, ct);
 
         // Nothing has ever been upserted into this collection, so its vec0 table doesn't exist yet
@@ -424,19 +430,19 @@ public sealed class SqliteVecVectorStore : IVectorStore
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private async Task<SqliteConnection> OpenConnectionAsync(CancellationToken ct)
+    // Loads the native extension and sets WAL/busy_timeout once per connection the pool creates,
+    // not once per IVectorStore call - reloading sqlite-vec's native library on every call was the
+    // single biggest cost in the per-call-connection design this replaced (measured in
+    // obsidian/aiyara-harness/RAG.md's benchmark). WAL lets concurrent readers (e.g. several agents
+    // searching) proceed alongside a writer instead of blocking; busy_timeout retries a lock
+    // conflict instead of failing it outright.
+    private static async Task ConfigureConnectionAsync(SqliteConnection connection, CancellationToken ct)
     {
-        var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync(ct);
         connection.LoadVector();
 
-        // WAL lets concurrent readers (e.g. several agents searching) proceed alongside a writer
-        // instead of blocking; busy_timeout retries a lock conflict instead of failing it outright.
         await using var pragma = connection.CreateCommand();
         pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;";
         await pragma.ExecuteNonQueryAsync(ct);
-
-        return connection;
     }
 
     /// <summary>

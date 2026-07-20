@@ -207,6 +207,12 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   empty), loaded into memory on first access and rewritten whole on every upsert/remove. Discards a
   collection's cached entries wholesale if `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer
   match the current config, rather than mixing incompatible embedding spaces.
+- `SqliteConnectionPool.cs` — `internal` helper shared by `SqliteVectorStore`/`SqliteVecVectorStore`:
+  rents an already-open, already-configured `SqliteConnection` back out instead of opening (and, for
+  `SqliteVecVectorStore`, re-`LoadVector()`-ing) a fresh one per `IVectorStore` call. Renting is
+  concurrency-safe (each rental is a distinct connection, never shared between simultaneous callers)
+  so WAL's concurrent-reader benefit isn't lost. `Rental` is an `IAsyncDisposable` struct - disposing
+  it returns the connection to the pool rather than closing it.
 - `SqliteVectorStore.cs` — `IVectorStore` implementation picked by `rag.json`'s `Backend: "Sqlite"`.
   One `vectors.db` (`documents`/`chunks`/`collections` tables) shared across collections, so an
   upsert/remove only touches its own rows instead of rewriting a whole file; WAL mode + `busy_timeout`
@@ -227,7 +233,10 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   `Program.cs` is the one that catches it and falls back to `SqliteVectorStore` (logged as a
   warning) - this class doesn't know about that fallback itself. `vec0`'s cosine distance is
   `1 - cosine_similarity`, flipped back to a similarity score in `SearchAsync` to match every other
-  `IVectorStore` implementation's convention.
+  `IVectorStore` implementation's convention. Loads the extension once per pooled connection
+  (`SqliteConnectionPool`'s configure callback), not once per call - see
+  `obsidian/aiyara-harness/RAG.md` for why that turned out to barely move the insert-throughput
+  needle despite being the original suspect.
 - `RagIndexBuilder.cs` — `BuildAsync` walks `DocumentsPath` (resolved the same way as
   `VectorStorePath`), reusing a file's stored chunks/embeddings unchanged via the store's
   `GetDocumentAsync` when its last-write time hasn't moved - only new/modified files cost an
