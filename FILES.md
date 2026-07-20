@@ -201,13 +201,13 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   by relative path, list a collection's indexed paths, and search by embedding. Everything is scoped
   by a `collection` string, a placeholder for the day multiple collections (e.g. per agent) are
   needed.
-- `JsonVectorStore.cs` — `IVectorStore` implementation currently wired up in `Program.cs`; one JSON
-  file per collection under `VectorStorePath` (`FromOptions` resolves that path via
-  `Workspace.ResolvePath`, defaulting to `.aiyara/rag` under the workspace root when empty), loaded
-  into memory on first access and rewritten whole on every upsert/remove. Discards a collection's
-  cached entries wholesale if `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match the current
-  config, rather than mixing incompatible embedding spaces.
-- `SqliteVectorStore.cs` — second `IVectorStore` implementation, not yet wired up in `Program.cs`.
+- `JsonVectorStore.cs` — `IVectorStore` implementation picked by `rag.json`'s `Backend: "Json"`
+  (the default); one JSON file per collection under `VectorStorePath` (`FromOptions` resolves that
+  path via `Workspace.ResolvePath`, defaulting to `.aiyara/rag` under the workspace root when
+  empty), loaded into memory on first access and rewritten whole on every upsert/remove. Discards a
+  collection's cached entries wholesale if `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer
+  match the current config, rather than mixing incompatible embedding spaces.
+- `SqliteVectorStore.cs` — `IVectorStore` implementation picked by `rag.json`'s `Backend: "Sqlite"`.
   One `vectors.db` (`documents`/`chunks`/`collections` tables) shared across collections, so an
   upsert/remove only touches its own rows instead of rewriting a whole file; WAL mode + `busy_timeout`
   let concurrent readers/writers (e.g. multiple agents) share the store. Search still ranks by

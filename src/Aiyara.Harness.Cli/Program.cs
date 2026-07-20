@@ -194,7 +194,10 @@ try
     {
         try
         {
-            var vectorStore = JsonVectorStore.FromOptions(ragOptions);
+            IVectorStore vectorStore = ragOptions.Backend == VectorStoreBackend.Sqlite
+                ? await SqliteVectorStore.FromOptionsAsync(ragOptions)
+                : JsonVectorStore.FromOptions(ragOptions);
+
             var stats = await RagIndexBuilder.BuildAsync(ragOptions, embeddingClient, vectorStore);
             tools.Add(new SearchDocumentsTool(
                 vectorStore, RagIndexBuilder.Collection, embeddingClient, ragOptions.EmbeddingModel, ragOptions.TopK));

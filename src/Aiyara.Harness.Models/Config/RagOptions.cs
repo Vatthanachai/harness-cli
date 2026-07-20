@@ -1,3 +1,5 @@
+using Aiyara.Harness.Models.Enums;
+
 namespace Aiyara.Harness.Models.Config;
 
 /// <summary>
@@ -19,6 +21,13 @@ public sealed class RagOptions
     /// Folder where the vector store is persisted.
     /// </summary>
     public string VectorStorePath { get; init; } = "";
+
+    /// <summary>
+    /// Which vector store implementation backs indexing/search - defaults to
+    /// <see cref="VectorStoreBackend.Json"/> so existing <c>rag.json</c> files (and indexes already
+    /// on disk) keep working unchanged.
+    /// </summary>
+    public VectorStoreBackend Backend { get; init; } = VectorStoreBackend.Json;
 
     /// <summary>
     /// Name of the embedding model (on whichever provider is active) used to index and query documents.

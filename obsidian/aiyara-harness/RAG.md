@@ -17,18 +17,30 @@ Indexing and search go through an `IVectorStore` abstraction (`src/Aiyara.Harnes
 IVectorStore.cs`) - mirrors the `IEmbeddingClient` split so `RagIndexBuilder`/`SearchDocumentsTool`
 don't know or care which backing store is active. Everything is scoped by a `collection` string
 (today there's exactly one, `RagIndexBuilder.Collection`) - a placeholder for per-agent collections
-later. `JsonVectorStore` is the only implementation so far: one JSON file per collection
-(`<VectorStorePath>/<collection>.json`), loaded into memory on first access and rewritten whole on
-every upsert/remove. A SQLite- or real-vector-db-backed implementation is the planned next step
-once document counts outgrow brute-force cosine similarity over a JSON blob - swapping it in should
-be a new `IVectorStore` implementation, not a rewrite of the indexing/search flow.
+later.
+
+`rag.json`'s `Backend` (`VectorStoreBackend`) picks the implementation, chosen in `Program.cs`:
+
+- `Json` (default) - `JsonVectorStore`: one JSON file per collection
+  (`<VectorStorePath>/<collection>.json`), loaded into memory on first access and rewritten whole on
+  every upsert/remove. Simplest, no extra dependency, fine at small document counts.
+- `Sqlite` - `SqliteVectorStore`: one shared `vectors.db` (`Microsoft.Data.Sqlite`), so an
+  upsert/remove only touches the rows it changes instead of rewriting a whole file. Runs in WAL mode
+  with a `busy_timeout`, so multiple readers/writers (e.g. several agents) can use the store at once
+  without one blocking the other.
+
+Both still rank search results by cosine similarity computed in C# over every row/entry in the
+collection - no ANN index yet. A store built on one (sqlite-vec, or an external vector db) is the
+planned next step once document counts outgrow that - swapping it in should be a new `IVectorStore`
+implementation, not a rewrite of the indexing/search flow. Existing `rag.json` files (and indexes
+already on disk) keep working unchanged since `Backend` defaults to `Json`.
 
 ## Indexing (`RagIndexBuilder.BuildAsync`)
 
 1. Resolves `DocumentsPath`/`VectorStorePath` through `Workspace.ResolvePath` - same workspace
    confinement every other file-touching feature already respects. `VectorStorePath` defaults to
    `.aiyara/rag` under the workspace root when left empty.
-2. `JsonVectorStore` loads the persisted collection if present - but discards it entirely (full
+2. The active store loads the persisted collection if present - but discards it entirely (full
    rebuild) if its `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match `rag.json`, rather
    than risk mixing incompatible embedding spaces or chunk boundaries.
 3. Walks `DocumentsPath` recursively (same noise-directory skip list as `ListFilesTool`, plus
@@ -46,9 +58,10 @@ file only costs an embedding call for that file's chunks - confirmed live (see b
 ## `search_documents`
 
 Embeds the query (via the active provider's `IEmbeddingClient`), calls `IVectorStore.SearchAsync`
-(cosine similarity ranking, for `JsonVectorStore`), returns the top `TopK` as
-`[<relative path>]\n<chunk text>` blocks. Blocks synchronously on both calls - same sync-over-async
-point `McpTool.Execute` already goes through, since `IInvokableTool.InvokeMethod` is synchronous.
+(cosine similarity ranking, on whichever backend `rag.json`'s `Backend` picked), returns the top
+`TopK` as `[<relative path>]\n<chunk text>` blocks. Blocks synchronously on both calls - same
+sync-over-async point `McpTool.Execute` already goes through, since `IInvokableTool.InvokeMethod`
+is synchronous.
 
 ## Verified live, on both providers
 
@@ -66,6 +79,7 @@ warning and just leaves `search_documents` unavailable, instead of crashing the 
   "Enabled": true,
   "DocumentsPath": ".",
   "VectorStorePath": "",
+  "Backend": "Sqlite",
   "EmbeddingModel": "text-embedding-nomic-embed-text-v1.5",
   "ChunkSize": 512,
   "ChunkOverlap": 50,
@@ -76,7 +90,9 @@ warning and just leaves `search_documents` unavailable, instead of crashing the 
 `EmbeddingModel` has to match whatever's actually loaded/pullable on the active provider - e.g.
 `nomic-embed-text` for Ollama vs. `text-embedding-nomic-embed-text-v1.5` for LM Studio in the
 example above, even though both are the same underlying model. `VectorStorePath: ""` uses the
-`.aiyara/rag` default.
+`.aiyara/rag` default. `Backend` is `Json` if omitted - set it to `Sqlite` to switch; switching
+after documents are already indexed doesn't migrate data between the two, it starts the new
+backend's store empty and reindexes from scratch.
 
 ## Related
 
