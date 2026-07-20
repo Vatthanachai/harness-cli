@@ -97,20 +97,27 @@ Takeaways:
   is dwarfed by the embedding API call that precedes every upsert (tens to hundreds of ms of
   network/inference latency per file) - but a full/initial reindex of a large corpus really will
   take noticeably longer to *persist* on `SqliteVec` than on `Sqlite`, independent of embedding time.
-  Originally suspected this was mostly `SqliteConnection`-open + `LoadVector()` overhead repeated on
-  every call (both stores opened a fresh connection per `IVectorStore` method), so both stores were
-  switched to a pooled/reused-connection design (`SqliteConnectionPool`, opens+configures a
-  connection once and rents it back out per call instead of reopening). **That hypothesis turned out
-  to be mostly wrong**: re-benchmarked after pooling and insert time only dropped ~3-4% (1733ms ->
-  1665ms at 2k chunks; 6767ms -> 6581ms at 8k). `Microsoft.Data.Sqlite` already pools the underlying
-  native handle per connection string by default, so the old per-call `new SqliteConnection()` was
-  apparently already cheap - the real cost is more likely the sheer number of individually-awaited
-  `INSERT`/transaction round-trips (2 inserts + 1 transaction commit per chunk), not connection
-  setup. Kept the pooling change anyway (it's strictly less wasteful and was verified safe under 25
-  concurrent callers via a scratch stress test - no serialization regression, WAL still lets
-  concurrent readers/writers through), but it doesn't meaningfully close the insert gap. Batching
-  multiple chunks/documents into fewer transactions would be the next thing to try if this gap ever
-  actually matters in practice.
+  Chased this in two rounds:
+  1. Suspected `SqliteConnection`-open + `LoadVector()` overhead repeated on every call, so both
+     stores were switched to a pooled/reused-connection design (`SqliteConnectionPool`). **Mostly
+     wrong**: insert time only dropped ~3-4% (1733ms -> 1665ms at 2k chunks). `Microsoft.Data.Sqlite`
+     already pools the underlying native handle per connection string by default, so the old per-call
+     `new SqliteConnection()` was apparently already cheap. Kept the change anyway (strictly less
+     wasteful, verified safe under 25 concurrent callers - no serialization regression, WAL still
+     lets concurrent readers/writers through).
+  2. Suspected the fsync-per-commit cost of WAL's default `synchronous=FULL` on every
+     one-transaction-per-document upsert, so both stores now set `PRAGMA synchronous = NORMAL`
+     (safe in WAL mode against an app crash; only a power-loss/OS-crash risk, acceptable for an
+     index that's cheap to rebuild). **This one landed for `Sqlite` but not `SqliteVec`**:
+     `Sqlite`'s insert time roughly halved at 8k/20k chunks (783ms -> 368ms; 1652ms -> 807ms), while
+     `SqliteVec`'s barely moved (6767ms -> 6081ms; 15793ms -> 15440ms, ~1.1x). That widens the
+     relative `SqliteVec`/`Sqlite` insert gap (now ~7x-19x instead of ~3x-10x) even though `SqliteVec`
+     got slightly faster in absolute terms - `Sqlite` just improved more. This points at `vec0`'s own
+     per-row insert work (JSON-parsing/validating/repacking the vector into its internal storage
+     format) as the real remaining cost, not anything transaction- or connection-level - which would
+     need batching multiple rows into fewer `INSERT`s (or fewer, larger vec0 writes) to address, a
+     real change to `RagIndexBuilder`'s one-document-at-a-time upsert flow. Not chased further since
+     nothing currently depends on faster `SqliteVec` indexing.
 - `Backend` still defaults to `Json` for backward compatibility - `SqliteVec` is worth recommending
   once a workspace's document count grows large enough that search latency is noticeable, not as a
   blanket default.

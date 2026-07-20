@@ -430,18 +430,20 @@ public sealed class SqliteVecVectorStore : IVectorStore
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    // Loads the native extension and sets WAL/busy_timeout once per connection the pool creates,
-    // not once per IVectorStore call - reloading sqlite-vec's native library on every call was the
-    // single biggest cost in the per-call-connection design this replaced (measured in
-    // obsidian/aiyara-harness/RAG.md's benchmark). WAL lets concurrent readers (e.g. several agents
-    // searching) proceed alongside a writer instead of blocking; busy_timeout retries a lock
-    // conflict instead of failing it outright.
+    // Loads the native extension and sets WAL/synchronous/busy_timeout once per connection the pool
+    // creates, not once per IVectorStore call - reloading sqlite-vec's native library on every call
+    // turned out to barely matter (see obsidian/aiyara-harness/RAG.md), but still only worth paying
+    // once. WAL lets concurrent readers (e.g. several agents searching) proceed alongside a writer
+    // instead of blocking; synchronous=NORMAL skips the fsync-per-commit that FULL does on every
+    // one-transaction-per-document upsert, safe in WAL mode against an application crash (only a
+    // power-loss/OS-crash risk, acceptable for an index that's cheap to rebuild); busy_timeout
+    // retries a lock conflict instead of failing it outright.
     private static async Task ConfigureConnectionAsync(SqliteConnection connection, CancellationToken ct)
     {
         connection.LoadVector();
 
         await using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;";
+        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;";
         await pragma.ExecuteNonQueryAsync(ct);
     }
 

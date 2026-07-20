@@ -318,12 +318,16 @@ public sealed class SqliteVectorStore : IVectorStore
     }
 
     // WAL lets concurrent readers (e.g. several agents searching) proceed alongside a writer instead
-    // of blocking; busy_timeout retries a lock conflict instead of failing it outright. Runs once per
-    // connection the pool creates, not once per IVectorStore call.
+    // of blocking; busy_timeout retries a lock conflict instead of failing it outright. synchronous=
+    // NORMAL skips the fsync-per-commit that FULL does on every one of RagIndexBuilder's one-
+    // transaction-per-document upserts - safe in WAL mode against an application crash, only a
+    // (very unlikely, and self-healing via re-embedding) risk on power loss/OS crash, which is an
+    // acceptable trade for an index that's cheap to rebuild. Runs once per connection the pool
+    // creates, not once per IVectorStore call.
     private static async Task ConfigureConnectionAsync(SqliteConnection connection, CancellationToken ct)
     {
         await using var pragma = connection.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;";
+        pragma.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;";
         await pragma.ExecuteNonQueryAsync(ct);
     }
 
