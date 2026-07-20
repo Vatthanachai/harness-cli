@@ -194,9 +194,12 @@ try
     {
         try
         {
-            IVectorStore vectorStore = ragOptions.Backend == VectorStoreBackend.Sqlite
-                ? await SqliteVectorStore.FromOptionsAsync(ragOptions)
-                : JsonVectorStore.FromOptions(ragOptions);
+            IVectorStore vectorStore = ragOptions.Backend switch
+            {
+                VectorStoreBackend.Sqlite => await SqliteVectorStore.FromOptionsAsync(ragOptions),
+                VectorStoreBackend.SqliteVec => await CreateSqliteVecStoreAsync(ragOptions),
+                _ => JsonVectorStore.FromOptions(ragOptions)
+            };
 
             var stats = await RagIndexBuilder.BuildAsync(ragOptions, embeddingClient, vectorStore);
             tools.Add(new SearchDocumentsTool(
@@ -210,6 +213,22 @@ try
             // index file shouldn't stop the harness from starting - same resilience policy already
             // applied to a broken MCP server or an invalid config file.
             Log.Warning(ex, "Couldn't build the RAG index - search_documents will not be available this session");
+        }
+    }
+
+    static async Task<IVectorStore> CreateSqliteVecStoreAsync(RagOptions options)
+    {
+        try
+        {
+            return await SqliteVecVectorStore.FromOptionsAsync(options);
+        }
+        catch (Exception ex)
+        {
+            // sqlite-vec's native extension may not load on every platform/architecture - degrade to
+            // the plain SqliteVectorStore (same tables, brute-force search) rather than losing RAG
+            // entirely over a backend choice the harness can't guarantee everywhere.
+            Log.Warning(ex, "Couldn't load the sqlite-vec extension - falling back to the Sqlite backend");
+            return await SqliteVectorStore.FromOptionsAsync(options);
         }
     }
 

@@ -27,13 +27,19 @@ later.
 - `Sqlite` - `SqliteVectorStore`: one shared `vectors.db` (`Microsoft.Data.Sqlite`), so an
   upsert/remove only touches the rows it changes instead of rewriting a whole file. Runs in WAL mode
   with a `busy_timeout`, so multiple readers/writers (e.g. several agents) can use the store at once
-  without one blocking the other.
+  without one blocking the other. Ranks search results by cosine similarity computed in C# over
+  every row in the collection - no ANN index.
+- `SqliteVec` - `SqliteVecVectorStore`: same tables as `Sqlite`, but embeddings live in a
+  per-collection `vec_<collection>` table via the [sqlite-vec](https://github.com/asg017/sqlite-vec)
+  extension (`vec0`, `distance_metric=cosine`), so `SearchAsync` runs a native `MATCH ... AND k = ?`
+  KNN query instead of looping in C#. Verified this ranks identically to `SqliteVectorStore`'s
+  brute-force cosine on the same data - it's still exact search (vec0 has no ANN index), just a much
+  smaller constant factor from native/SIMD execution. Loading the native extension can fail on an
+  unsupported platform; `Program.cs` catches that specifically and falls back to `SqliteVectorStore`
+  with a warning logged, so choosing `SqliteVec` never turns into "RAG doesn't work here."
 
-Both still rank search results by cosine similarity computed in C# over every row/entry in the
-collection - no ANN index yet. A store built on one (sqlite-vec, or an external vector db) is the
-planned next step once document counts outgrow that - swapping it in should be a new `IVectorStore`
-implementation, not a rewrite of the indexing/search flow. Existing `rag.json` files (and indexes
-already on disk) keep working unchanged since `Backend` defaults to `Json`.
+Existing `rag.json` files (and indexes already on disk) keep working unchanged since `Backend`
+defaults to `Json`.
 
 ## Indexing (`RagIndexBuilder.BuildAsync`)
 
@@ -79,7 +85,7 @@ warning and just leaves `search_documents` unavailable, instead of crashing the 
   "Enabled": true,
   "DocumentsPath": ".",
   "VectorStorePath": "",
-  "Backend": "Sqlite",
+  "Backend": "SqliteVec",
   "EmbeddingModel": "text-embedding-nomic-embed-text-v1.5",
   "ChunkSize": 512,
   "ChunkOverlap": 50,

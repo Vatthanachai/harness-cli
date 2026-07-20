@@ -217,6 +217,17 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   file. Uses `Microsoft.Data.Sqlite`; `SQLitePCLRaw.bundle_e_sqlite3` is pinned to 3.0.4 in
   `Directory.Packages.props` to clear a known-vulnerable transitive 2.1.11 that `Microsoft.Data.Sqlite`
   still pulls in otherwise (GHSA-2m69-gcr7-jv3q).
+- `SqliteVecVectorStore.cs` — `IVectorStore` implementation picked by `rag.json`'s
+  `Backend: "SqliteVec"`. Same `documents`/`chunks`/`collections` tables as `SqliteVectorStore`, but
+  embeddings live in a per-collection `vec_<collection>` virtual table (the `sqlite-vec` extension's
+  `vec0`, `distance_metric=cosine`), so search runs as a native `MATCH ... AND k = ?` KNN query
+  instead of a C# loop - still exact search, not ANN, just a much smaller constant factor. Loading
+  the native extension (`connection.LoadVector()`, from the `sqlite-vec` NuGet package) can fail on
+  unsupported platforms; construction throws in that case rather than silently degrading, so
+  `Program.cs` is the one that catches it and falls back to `SqliteVectorStore` (logged as a
+  warning) - this class doesn't know about that fallback itself. `vec0`'s cosine distance is
+  `1 - cosine_similarity`, flipped back to a similarity score in `SearchAsync` to match every other
+  `IVectorStore` implementation's convention.
 - `RagIndexBuilder.cs` — `BuildAsync` walks `DocumentsPath` (resolved the same way as
   `VectorStorePath`), reusing a file's stored chunks/embeddings unchanged via the store's
   `GetDocumentAsync` when its last-write time hasn't moved - only new/modified files cost an

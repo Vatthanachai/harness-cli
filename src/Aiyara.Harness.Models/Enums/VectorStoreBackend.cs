@@ -6,5 +6,6 @@ namespace Aiyara.Harness.Models.Enums;
 public enum VectorStoreBackend
 {
     Json,
-    Sqlite
+    Sqlite,
+    SqliteVec
 }
