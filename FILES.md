@@ -193,21 +193,31 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
 
 - `DocumentChunker.cs` — plain character-based sliding-window chunking (`ChunkSize`/`ChunkOverlap`
   from `rag.json`), no NLP dependency.
-- `RagIndexFile.cs` — the on-disk JSON shape persisted at `<VectorStorePath>/index.json`
+- `RagIndexFile.cs` — the on-disk JSON shape persisted at `<VectorStorePath>/<collection>.json`
   (`RagIndexFile` > `RagDocumentEntry` > `RagChunkEntry`), keyed by each file's relative path and
   last-write time.
-- `RagIndex.cs` — in-memory view over an already-built `RagIndexFile`'s documents; `Search` ranks
-  chunks by cosine similarity to a query embedding.
-- `RagIndexBuilder.cs` — `BuildAsync` resolves `DocumentsPath`/`VectorStorePath` through
-  `Workspace.ResolvePath` (`VectorStorePath` defaults to `.aiyara/rag` under the workspace root
-  when empty), discards and fully rebuilds the persisted index if `EmbeddingModel`/`ChunkSize`/
-  `ChunkOverlap` no longer match the current config, and otherwise reuses a file's stored
-  chunks/embeddings unchanged when its last-write time hasn't moved - only new/modified files cost
-  an embedding call. Skips noise directories (same list as `ListFilesTool`, plus `.aiyara` itself)
-  and files over 2 MB.
+- `IVectorStore.cs` — storage abstraction RAG indexes/searches through (mirrors `IEmbeddingClient`'s
+  split so callers don't know or care which backing store is active): get/upsert/remove a document
+  by relative path, list a collection's indexed paths, and search by embedding. Everything is scoped
+  by a `collection` string, a placeholder for the day multiple collections (e.g. per agent) are
+  needed.
+- `JsonVectorStore.cs` — the only `IVectorStore` implementation today; one JSON file per collection
+  under `VectorStorePath` (`FromOptions` resolves that path via `Workspace.ResolvePath`, defaulting
+  to `.aiyara/rag` under the workspace root when empty), loaded into memory on first access and
+  rewritten whole on every upsert/remove. Discards a collection's cached entries wholesale if
+  `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match the current config, rather than mixing
+  incompatible embedding spaces.
+- `RagIndexBuilder.cs` — `BuildAsync` walks `DocumentsPath` (resolved the same way as
+  `VectorStorePath`), reusing a file's stored chunks/embeddings unchanged via the store's
+  `GetDocumentAsync` when its last-write time hasn't moved - only new/modified files cost an
+  embedding call, written back via `UpsertDocumentAsync`. Prunes entries for files no longer present
+  under `DocumentsPath` via `ListDocumentPathsAsync`/`RemoveDocumentAsync`. Skips noise directories
+  (same list as `ListFilesTool`, plus `.aiyara` itself) and files over 2 MB. Returns a
+  `RagIndexStats` (file/chunk counts) for startup logging; `Collection` is the fixed collection name
+  it indexes into today.
 - `SearchDocumentsTool.cs` — `BaseTool` named `search_documents`; embeds the query via the active
-  provider's `IEmbeddingClient`, calls `RagIndex.Search`, and returns the top `TopK` chunks as
-  `[<relative path>]\n<chunk text>` blocks. Blocks synchronously on the embedding call - same
+  provider's `IEmbeddingClient`, calls `IVectorStore.SearchAsync`, and returns the top `TopK` chunks
+  as `[<relative path>]\n<chunk text>` blocks. Blocks synchronously on both calls - same
   sync-over-async point `McpTool.Execute` already goes through.
 
 ## Conventions

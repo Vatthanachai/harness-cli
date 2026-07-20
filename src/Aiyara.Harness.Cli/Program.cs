@@ -194,10 +194,12 @@ try
     {
         try
         {
-            var ragIndex = await RagIndexBuilder.BuildAsync(ragOptions, embeddingClient);
-            tools.Add(new SearchDocumentsTool(ragIndex, embeddingClient, ragOptions.EmbeddingModel, ragOptions.TopK));
+            var vectorStore = JsonVectorStore.FromOptions(ragOptions);
+            var stats = await RagIndexBuilder.BuildAsync(ragOptions, embeddingClient, vectorStore);
+            tools.Add(new SearchDocumentsTool(
+                vectorStore, RagIndexBuilder.Collection, embeddingClient, ragOptions.EmbeddingModel, ragOptions.TopK));
 
-            Log.Information("RAG index ready: {Files} file(s), {Chunks} chunk(s)", ragIndex.FileCount, ragIndex.ChunkCount);
+            Log.Information("RAG index ready: {Files} file(s), {Chunks} chunk(s)", stats.FileCount, stats.ChunkCount);
         }
         catch (Exception ex)
         {

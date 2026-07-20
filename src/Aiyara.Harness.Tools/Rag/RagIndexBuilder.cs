@@ -1,18 +1,23 @@
-using System.Text.Json;
-
 using Aiyara.Harness.Models.Config;
 using Aiyara.Harness.Tools.Providers;
 
 namespace Aiyara.Harness.Tools.Rag;
 
 /// <summary>
-/// Builds (or incrementally refreshes) the RAG index for the configured <c>DocumentsPath</c>,
-/// persisting it under <c>VectorStorePath</c>. A file whose content hasn't changed since it was
-/// last indexed (exact <c>LastWriteUtc</c> match) is reused as-is, not re-embedded - the only
-/// files that cost an embedding call are new or modified ones.
+/// Builds (or incrementally refreshes) the RAG index for the configured <c>DocumentsPath</c> into
+/// an <see cref="IVectorStore"/>. A file whose content hasn't changed since it was last indexed
+/// (exact <c>LastWriteUtc</c> match) is reused as-is, not re-embedded - the only files that cost an
+/// embedding call are new or modified ones. Files that disappeared from <c>DocumentsPath</c> since
+/// the last build are pruned from the store so they stop surfacing in search results.
 /// </summary>
 public static class RagIndexBuilder
 {
+    /// <summary>
+    /// The single collection RAG currently indexes into - a placeholder for the day multiple
+    /// collections (e.g. per agent) are needed, at which point this stops being a constant.
+    /// </summary>
+    public const string Collection = "index";
+
     // Skips pathologically large files rather than embedding gigabytes of, say, a checked-in
     // binary asset that happens to live under DocumentsPath.
     private const long MaxFileSizeBytes = 2 * 1024 * 1024;
@@ -23,9 +28,8 @@ public static class RagIndexBuilder
         "__pycache__", ".venv"
     };
 
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
-
-    public static async Task<RagIndex> BuildAsync(RagOptions options, IEmbeddingClient embeddings, CancellationToken ct = default)
+    public static async Task<RagIndexStats> BuildAsync(
+        RagOptions options, IEmbeddingClient embeddings, IVectorStore store, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(options.DocumentsPath))
             throw new InvalidOperationException("rag.json's DocumentsPath is empty - set it before enabling RAG.");
@@ -34,26 +38,23 @@ public static class RagIndexBuilder
         if (!Directory.Exists(documentsRoot))
             throw new DirectoryNotFoundException($"RAG DocumentsPath '{options.DocumentsPath}' does not exist.");
 
-        var storeDir = Workspace.ResolvePath(
-            string.IsNullOrWhiteSpace(options.VectorStorePath) ? ".aiyara/rag" : options.VectorStorePath);
-        Directory.CreateDirectory(storeDir);
-        var indexPath = Path.Combine(storeDir, "index.json");
-
-        var existing = LoadExisting(indexPath, options);
-        var existingByPath = existing.Documents.ToDictionary(d => d.RelativePath, StringComparer.OrdinalIgnoreCase);
-
-        var updatedDocuments = new List<RagDocumentEntry>();
+        var currentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fileCount = 0;
+        var chunkCount = 0;
 
         foreach (var filePath in EnumerateDocumentFiles(documentsRoot))
         {
             ct.ThrowIfCancellationRequested();
 
             var relativePath = Path.GetRelativePath(documentsRoot, filePath).Replace('\\', '/');
+            currentPaths.Add(relativePath);
             var lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
 
-            if (existingByPath.TryGetValue(relativePath, out var previous) && previous.LastWriteUtc == lastWriteUtc)
+            var previous = await store.GetDocumentAsync(Collection, relativePath, ct);
+            if (previous is not null && previous.LastWriteUtc == lastWriteUtc)
             {
-                updatedDocuments.Add(previous);
+                fileCount++;
+                chunkCount += previous.Chunks.Count;
                 continue;
             }
 
@@ -72,7 +73,7 @@ public static class RagIndexBuilder
 
             var vectors = await embeddings.EmbedAsync(chunks, options.EmbeddingModel, ct);
 
-            updatedDocuments.Add(new RagDocumentEntry
+            var document = new RagDocumentEntry
             {
                 RelativePath = relativePath,
                 LastWriteUtc = lastWriteUtc,
@@ -81,43 +82,18 @@ public static class RagIndexBuilder
                     Text = chunkText,
                     Embedding = embedding
                 }).ToList()
-            });
+            };
+
+            await store.UpsertDocumentAsync(Collection, document, ct);
+            fileCount++;
+            chunkCount += document.Chunks.Count;
         }
 
-        var updatedFile = new RagIndexFile
-        {
-            EmbeddingModel = options.EmbeddingModel,
-            ChunkSize = options.ChunkSize,
-            ChunkOverlap = options.ChunkOverlap,
-            Documents = updatedDocuments
-        };
+        var indexedPaths = await store.ListDocumentPathsAsync(Collection, ct);
+        foreach (var stalePath in indexedPaths.Where(p => !currentPaths.Contains(p)))
+            await store.RemoveDocumentAsync(Collection, stalePath, ct);
 
-        await File.WriteAllTextAsync(indexPath, JsonSerializer.Serialize(updatedFile, SerializerOptions), ct);
-
-        return new RagIndex(updatedDocuments);
-    }
-
-    private static RagIndexFile LoadExisting(string indexPath, RagOptions options)
-    {
-        if (!File.Exists(indexPath)) return new RagIndexFile();
-
-        try
-        {
-            var loaded = JsonSerializer.Deserialize<RagIndexFile>(File.ReadAllText(indexPath));
-            if (loaded is null) return new RagIndexFile();
-
-            var matchesConfig = loaded.EmbeddingModel == options.EmbeddingModel &&
-                                 loaded.ChunkSize == options.ChunkSize &&
-                                 loaded.ChunkOverlap == options.ChunkOverlap;
-
-            // A changed embedding model or chunk size makes the old vectors/boundaries
-            // incompatible with new ones - safer to rebuild everything than silently mix them.
-            return matchesConfig ? loaded : new RagIndexFile();
-        }
-        catch (JsonException)
-        {
-            return new RagIndexFile();
-        }
+        return new RagIndexStats(fileCount, chunkCount);
     }
 
     private static IEnumerable<string> EnumerateDocumentFiles(string root)
@@ -157,3 +133,8 @@ public static class RagIndexBuilder
         }
     }
 }
+
+/// <summary>
+/// Summary of a completed <see cref="RagIndexBuilder.BuildAsync"/> run, for status logging.
+/// </summary>
+public readonly record struct RagIndexStats(int FileCount, int ChunkCount);

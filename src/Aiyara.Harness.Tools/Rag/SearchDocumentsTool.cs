@@ -11,14 +11,16 @@ namespace Aiyara.Harness.Tools.Rag;
 /// </summary>
 public sealed class SearchDocumentsTool : BaseTool
 {
-    private readonly RagIndex _index;
+    private readonly IVectorStore _store;
+    private readonly string _collection;
     private readonly IEmbeddingClient _embeddings;
     private readonly string _model;
     private readonly int _topK;
 
-    public SearchDocumentsTool(RagIndex index, IEmbeddingClient embeddings, string model, int topK)
+    public SearchDocumentsTool(IVectorStore store, string collection, IEmbeddingClient embeddings, string model, int topK)
     {
-        _index = index;
+        _store = store;
+        _collection = collection;
         _embeddings = embeddings;
         _model = model;
         _topK = topK;
@@ -47,7 +49,7 @@ public sealed class SearchDocumentsTool : BaseTool
             return "Error: 'query' is required.";
 
         var queryEmbedding = _embeddings.EmbedAsync([query], _model).GetAwaiter().GetResult()[0];
-        var results = _index.Search(queryEmbedding, _topK);
+        var results = _store.SearchAsync(_collection, queryEmbedding, _topK).GetAwaiter().GetResult();
 
         if (results.Count == 0)
             return "No indexed documents matched.";

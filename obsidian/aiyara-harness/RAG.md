@@ -11,31 +11,44 @@ Same reasoning as [[MCP]]: every tool the model can call is already just a `Base
 those - it shows up in [[Tools]] (`/tools`) and gets called through either `IChatEngine`
 implementation with zero changes anywhere else.
 
+## Storage: `IVectorStore`
+
+Indexing and search go through an `IVectorStore` abstraction (`src/Aiyara.Harness.Tools/Rag/
+IVectorStore.cs`) - mirrors the `IEmbeddingClient` split so `RagIndexBuilder`/`SearchDocumentsTool`
+don't know or care which backing store is active. Everything is scoped by a `collection` string
+(today there's exactly one, `RagIndexBuilder.Collection`) - a placeholder for per-agent collections
+later. `JsonVectorStore` is the only implementation so far: one JSON file per collection
+(`<VectorStorePath>/<collection>.json`), loaded into memory on first access and rewritten whole on
+every upsert/remove. A SQLite- or real-vector-db-backed implementation is the planned next step
+once document counts outgrow brute-force cosine similarity over a JSON blob - swapping it in should
+be a new `IVectorStore` implementation, not a rewrite of the indexing/search flow.
+
 ## Indexing (`RagIndexBuilder.BuildAsync`)
 
 1. Resolves `DocumentsPath`/`VectorStorePath` through `Workspace.ResolvePath` - same workspace
    confinement every other file-touching feature already respects. `VectorStorePath` defaults to
    `.aiyara/rag` under the workspace root when left empty.
-2. Loads the persisted index (`<VectorStorePath>/index.json`) if present - but discards it
-   entirely (full rebuild) if its `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match
-   `rag.json`, rather than risk mixing incompatible embedding spaces or chunk boundaries.
+2. `JsonVectorStore` loads the persisted collection if present - but discards it entirely (full
+   rebuild) if its `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match `rag.json`, rather
+   than risk mixing incompatible embedding spaces or chunk boundaries.
 3. Walks `DocumentsPath` recursively (same noise-directory skip list as `ListFilesTool`, plus
-   `.aiyara` itself; skips files over 2 MB). For each file: if its `LastWriteUtc` exactly matches
-   what's already stored, its chunks/embeddings are reused untouched - **no embedding call**. Only
-   a new or modified file gets chunked (`DocumentChunker` - plain character sliding window,
-   `ChunkSize`/`ChunkOverlap`) and embedded.
-4. Drops entries for files that no longer exist, persists the updated index, returns an in-memory
-   `RagIndex` for cosine-similarity search.
+   `.aiyara` itself; skips files over 2 MB). For each file: `store.GetDocumentAsync` returns the
+   stored entry if its `LastWriteUtc` exactly matches what's already stored, reused untouched -
+   **no embedding call**. Only a new or modified file gets chunked (`DocumentChunker` - plain
+   character sliding window, `ChunkSize`/`ChunkOverlap`), embedded, and written back via
+   `store.UpsertDocumentAsync`.
+4. Drops entries for files that no longer exist via `store.ListDocumentPathsAsync`/
+   `RemoveDocumentAsync`, and returns a `RagIndexStats` (file/chunk counts) for startup logging.
 
 This means a restart with no document changes is fast (no re-embedding at all), and editing one
 file only costs an embedding call for that file's chunks - confirmed live (see below).
 
 ## `search_documents`
 
-Embeds the query (via the active provider's `IEmbeddingClient`), ranks all chunks by cosine
-similarity, returns the top `TopK` as `[<relative path>]\n<chunk text>` blocks. Blocks
-synchronously on the embedding call - same sync-over-async point `McpTool.Execute` already goes
-through, since `IInvokableTool.InvokeMethod` is synchronous.
+Embeds the query (via the active provider's `IEmbeddingClient`), calls `IVectorStore.SearchAsync`
+(cosine similarity ranking, for `JsonVectorStore`), returns the top `TopK` as
+`[<relative path>]\n<chunk text>` blocks. Blocks synchronously on both calls - same sync-over-async
+point `McpTool.Execute` already goes through, since `IInvokableTool.InvokeMethod` is synchronous.
 
 ## Verified live, on both providers
 
