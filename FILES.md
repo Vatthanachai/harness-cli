@@ -201,12 +201,22 @@ not an always-on prompt-injection pipeline, so `ChatSession` needed no changes.
   by relative path, list a collection's indexed paths, and search by embedding. Everything is scoped
   by a `collection` string, a placeholder for the day multiple collections (e.g. per agent) are
   needed.
-- `JsonVectorStore.cs` — the only `IVectorStore` implementation today; one JSON file per collection
-  under `VectorStorePath` (`FromOptions` resolves that path via `Workspace.ResolvePath`, defaulting
-  to `.aiyara/rag` under the workspace root when empty), loaded into memory on first access and
-  rewritten whole on every upsert/remove. Discards a collection's cached entries wholesale if
-  `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match the current config, rather than mixing
-  incompatible embedding spaces.
+- `JsonVectorStore.cs` — `IVectorStore` implementation currently wired up in `Program.cs`; one JSON
+  file per collection under `VectorStorePath` (`FromOptions` resolves that path via
+  `Workspace.ResolvePath`, defaulting to `.aiyara/rag` under the workspace root when empty), loaded
+  into memory on first access and rewritten whole on every upsert/remove. Discards a collection's
+  cached entries wholesale if `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match the current
+  config, rather than mixing incompatible embedding spaces.
+- `SqliteVectorStore.cs` — second `IVectorStore` implementation, not yet wired up in `Program.cs`.
+  One `vectors.db` (`documents`/`chunks`/`collections` tables) shared across collections, so an
+  upsert/remove only touches its own rows instead of rewriting a whole file; WAL mode + `busy_timeout`
+  let concurrent readers/writers (e.g. multiple agents) share the store. Search still ranks by
+  cosine similarity computed in C# over every row in the collection (embeddings stored as BLOBs via
+  `Buffer.BlockCopy`, no ANN index) - same config-mismatch-wipes-the-collection rule as
+  `JsonVectorStore`, scoped to that collection's rows via the `collections` table instead of a whole
+  file. Uses `Microsoft.Data.Sqlite`; `SQLitePCLRaw.bundle_e_sqlite3` is pinned to 3.0.4 in
+  `Directory.Packages.props` to clear a known-vulnerable transitive 2.1.11 that `Microsoft.Data.Sqlite`
+  still pulls in otherwise (GHSA-2m69-gcr7-jv3q).
 - `RagIndexBuilder.cs` — `BuildAsync` walks `DocumentsPath` (resolved the same way as
   `VectorStorePath`), reusing a file's stored chunks/embeddings unchanged via the store's
   `GetDocumentAsync` when its last-write time hasn't moved - only new/modified files cost an
