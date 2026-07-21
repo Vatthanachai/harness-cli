@@ -18,7 +18,7 @@ so the model doesn't need to re-explore the tree every session.
 - `src/Aiyara.Harness.Cli/` — console entry point and chat loop.
 - `src/Aiyara.Harness.Models/` — config option types, JSON-backed user config store, workspace/trust/consent.
 - `src/Aiyara.Harness.Tools/` — tools exposed to the model.
-- `tests/` — currently empty; no test project exists yet.
+- `tests/` — `Aiyara.Harness.Tools.Tests`, the repo's first test project (xunit, `dotnet test`).
 
 ## `src/Aiyara.Harness.Cli/`
 
@@ -30,8 +30,8 @@ so the model doesn't need to re-explore the tree every session.
   `mcp.json` and appends their tools (see `src/Aiyara.Harness.Tools/Mcp/`), builds/refreshes the
   RAG index and adds `search_documents` if `rag.json`'s `Enabled` is true (see
   `src/Aiyara.Harness.Tools/Rag/`), adds `web_search`/`web_fetch` if `websearch.json`'s `Enabled`
-  is true and `ApiKey` is set (see `src/Aiyara.Harness.Tools/Web/`), registers the built-in tools,
-  starts the chat session. Builds
+  is true (see `src/Aiyara.Harness.Tools/Web/`), registers the built-in tools, starts the chat
+  session. Builds
   the Serilog file sink's path here rather than in `appsettings.json` -
   `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
   runtime to the current user's profile, not a path relative to wherever the process happens to be

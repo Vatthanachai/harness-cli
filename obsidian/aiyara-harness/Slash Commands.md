@@ -12,11 +12,12 @@ Same as the `harness config` CLI, without leaving the chat.
 | Subcommand | Parameters | What it does |
 |---|---|---|
 | `path` | none | Prints the config directory (`%USERPROFILE%\.aiyara\`). |
-| `show` | `[category]` optional | Prints current config - all eight categories, or just one. |
+| `show` | `[category]` optional | Prints current config - all nine categories, or just one. |
 | `set` | `<category> <key> <value>` all required | Changes a single value in that category's JSON file. |
 | `edit` | `<category>` required | Opens the category's JSON file in your default editor. |
 
-`category` is one of: `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
+`category` is one of: `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `websearch`, `statusline`, `trust`,
+`logging`.
 
 **Examples:**
 ```
