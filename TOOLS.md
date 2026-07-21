@@ -43,6 +43,16 @@ how the model should use its own tools here — not a description of what the to
   attribute) to the project's `.csproj`. A `Version` on a `PackageReference` now causes a build
   error (NU1008) because CPM is on.
 
+## `web_search` / `web_fetch` usage
+
+- Only available if `websearch.json`'s `Enabled` is true and its `BaseUrl` (a local SearXNG
+  instance) is reachable - if these tools aren't in your list, don't ask the user to enable them
+  mid-task; just say web search isn't configured.
+- `web_search` returns title/URL/snippet only. Follow up with `web_fetch` on a specific result's
+  URL when you need the full page content, not the snippet.
+- `web_fetch` truncates to 8,000 characters - for a long page, prefer a narrower `web_search` query
+  over relying on `web_fetch` to surface the right section.
+
 ## `write_skill` / `delete_skill` scope
 
 - Default to `scope: "workspace"` (or omit it) for anything specific to this project - it lives in

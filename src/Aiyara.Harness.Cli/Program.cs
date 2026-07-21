@@ -11,6 +11,7 @@ using Aiyara.Harness.Tools.Providers;
 using Aiyara.Harness.Tools.Rag;
 using Aiyara.Harness.Tools.Providers.LmStudio;
 using Aiyara.Harness.Tools.Providers.Ollama;
+using Aiyara.Harness.Tools.Web;
 
 using Microsoft.Extensions.Configuration;
 
@@ -78,6 +79,7 @@ try
     var models = UserConfigStore.Load("models.json", new ModelsOptions());
     var mcpOptions = UserConfigStore.Load("mcp.json", new McpOptions());
     var ragOptions = UserConfigStore.Load("rag.json", new RagOptions());
+    var webSearchOptions = UserConfigStore.Load("websearch.json", new WebSearchOptions());
 
     var systemPrompt = new StringBuilder(Persona.SystemPrompt);
     systemPrompt.Append($"\n\n{Persona.WorkingPrinciples}");
@@ -213,6 +215,26 @@ try
             // index file shouldn't stop the harness from starting - same resilience policy already
             // applied to a broken MCP server or an invalid config file.
             Log.Warning(ex, "Couldn't build the RAG index - search_documents will not be available this session");
+        }
+    }
+
+    if (webSearchOptions.Enabled)
+    {
+        try
+        {
+            var searxBaseUrl = webSearchOptions.BaseUrl.TrimEnd('/') + "/";
+            var searxClient = new HttpClient { BaseAddress = new Uri(searxBaseUrl) };
+            tools.Add(new WebSearchTool(searxClient, webSearchOptions.MaxResults));
+
+            var fetchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            fetchClient.DefaultRequestHeaders.UserAgent.ParseAdd("Aiyara-Harness/1.0");
+            tools.Add(new WebFetchTool(fetchClient));
+        }
+        catch (UriFormatException ex)
+        {
+            // Same resilience policy as a broken MCP server or an invalid RAG config: log and
+            // keep starting rather than failing the whole session over one optional tool.
+            Log.Warning(ex, "websearch.json's BaseUrl is not a valid URL - web_search/web_fetch will not be available this session");
         }
     }
 

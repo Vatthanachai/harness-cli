@@ -58,6 +58,7 @@ time each is read:
 | `logging.json` | `ShowThinking` — whether the model's thinking/reasoning is displayed live in the terminal. `LogThinking` — whether it's also written to the log (console + rolling file). Two independent toggles; **both off by default.** |
 | `mcp.json` | `Servers` — [MCP](https://modelcontextprotocol.io) server definitions (`Name`, `Command`, `Args`, `Env`), each launched over stdio at startup. Every tool the server reports is exposed to the model as `<Name>_<tool>` (e.g. a server named `github` exposing `search_issues` becomes `github_search_issues`), alongside the built-in tools — `/tools` lists and toggles them the same way. A server that fails to launch or complete the MCP handshake is skipped with a warning logged, rather than stopping the harness from starting. |
 | `rag.json` | `Enabled` — turns retrieval-augmented generation on. `DocumentsPath` — folder (relative to the workspace root, unless absolute) to index. `VectorStorePath` — where the index is persisted; defaults to `.aiyara/rag` under the workspace root if left empty. `Backend` — `Json` (default; one JSON file, simplest), `Sqlite` (one shared `vectors.db`, only rewrites changed rows, safe for concurrent readers/writers), or `SqliteVec` (same as `Sqlite`, plus the `sqlite-vec` extension for native SIMD-accelerated search; falls back to `Sqlite` with a warning if the extension can't load on this machine). `EmbeddingModel` — embedding model name on whichever provider is active (e.g. `nomic-embed-text` on Ollama, `text-embedding-nomic-embed-text-v1.5` on LM Studio). `ChunkSize`/`ChunkOverlap` — characters per chunk / shared between consecutive chunks. `TopK` — chunks returned per query. When enabled, the harness (re)indexes `DocumentsPath` at startup — incrementally, only embedding files that are new or changed since the index was last built — and exposes a `search_documents` tool the model calls on demand (see [Tools](#tools)); a bad path or embedding failure is logged as a warning and just leaves `search_documents` unavailable, rather than stopping the harness from starting. |
+| `websearch.json` | `Enabled` — turns the `web_search`/`web_fetch` tools on. `BaseUrl` — base URL of a self-hosted [SearXNG](https://github.com/searxng/searxng) instance `web_search` queries, e.g. `http://localhost:8080`; no API key needed. `MaxResults` — results returned per `web_search` query (default `5`). SearXNG must have `json` listed under `search.formats` in its `settings.yml`, or every query 403s. If `BaseUrl` isn't a valid URL, a warning is logged and both tools are left unavailable for the session, rather than stopping the harness from starting. |
 
 Edit them from the command line without starting a chat session:
 
@@ -68,7 +69,7 @@ harness config set <category> <key> <value>  # change a single value
 harness config edit <category>                # open a category's JSON file in your default editor
 ```
 
-`category` is one of `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `statusline`, `trust`, `logging`.
+`category` is one of `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `websearch`, `statusline`, `trust`, `logging`.
 
 ### Choosing a provider
 
@@ -116,6 +117,7 @@ The model can call these during a conversation (registered in `src/Aiyara.Harnes
 Plus, dynamically:
 - One tool per capability reported by each connected [MCP](#configuration) server (`mcp.json`), named `<server>_<tool>`.
 - `search_documents` — searches the RAG index built from `rag.json`'s `DocumentsPath`, if `Enabled: true`.
+- `web_search`, `web_fetch` — search the public web (via a self-hosted [SearXNG](https://github.com/searxng/searxng) instance) and fetch a URL's text content, if `websearch.json`'s `Enabled: true`.
 
 ## Skills
 

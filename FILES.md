@@ -29,7 +29,9 @@ so the model doesn't need to re-explore the tree every session.
   `LMStudio` - see `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in
   `mcp.json` and appends their tools (see `src/Aiyara.Harness.Tools/Mcp/`), builds/refreshes the
   RAG index and adds `search_documents` if `rag.json`'s `Enabled` is true (see
-  `src/Aiyara.Harness.Tools/Rag/`), registers the built-in tools, starts the chat session. Builds
+  `src/Aiyara.Harness.Tools/Rag/`), adds `web_search`/`web_fetch` if `websearch.json`'s `Enabled`
+  is true and `ApiKey` is set (see `src/Aiyara.Harness.Tools/Web/`), registers the built-in tools,
+  starts the chat session. Builds
   the Serilog file sink's path here rather than in `appsettings.json` -
   `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
   runtime to the current user's profile, not a path relative to wherever the process happens to be
@@ -108,8 +110,11 @@ so the model doesn't need to re-explore the tree every session.
   looks up a skill by name regardless of enabled state - used by `ChatSession`/`SlashInputReader`
   to resolve `/<skill-name>` as a slash command.
 - `ModelsOptions.cs`, `OllamaConnectionOptions.cs`, `LmStudioConnectionOptions.cs`, `McpOptions.cs`,
-  `RagOptions.cs`, `StatuslineOptions.cs`, `LoggingOptions.cs` — option types stored as JSON config
-  files. `ModelsOptions.Provider` (`Enums/Provider.cs`: `Ollama`/`LMStudio`) picks which server
+  `RagOptions.cs`, `WebSearchOptions.cs`, `StatuslineOptions.cs`, `LoggingOptions.cs` — option types
+  stored as JSON config files. `WebSearchOptions` (`websearch.json`) backs `web_search`/`web_fetch` -
+  `BaseUrl` points at a self-hosted SearXNG instance (no API key needed); `Program.cs` skips
+  registering both tools (logging a warning) if `Enabled` is true but `BaseUrl` isn't a valid URL.
+  `ModelsOptions.Provider` (`Enums/Provider.cs`: `Ollama`/`LMStudio`) picks which server
   `Program.cs` builds a chat engine for at startup - read once, so switching it requires a
   restart; `ModelsOptions` is a `record` (not a plain class) so `SlashCommandContext.SwitchModel`
   can update `Default` via a `with`-expression without clobbering `Provider`.
@@ -146,6 +151,18 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
   scopes at once.
 - `DateTimeTool.cs` — current date/time.
 - `CommonTools.cs` — excluded from the build (see `Aiyara.Harness.Tools.csproj`); not currently wired in.
+
+## `src/Aiyara.Harness.Tools/Web/`
+
+Wired in only if `websearch.json`'s `Enabled` is true; same opt-in-tool pattern as `Rag/`.
+
+- `WebSearchTool.cs` — `web_search`: queries a self-hosted SearXNG instance (`GET search?q=...
+  &format=json` against `websearch.json`'s `BaseUrl`, no API key) and returns each result's
+  title/URL/content snippet as plain text. SearXNG needs `json` listed under `search.formats` in
+  its `settings.yml`, or every query 403s.
+- `WebFetchTool.cs` — `web_fetch`: fetches a given `http(s)` URL, and for an HTML response strips
+  `<script>`/`<style>` blocks and tags via regex (no HTML parser dependency) before
+  `WebUtility.HtmlDecode`-ing entities and collapsing whitespace. Truncates to 8,000 characters.
 
 ## `src/Aiyara.Harness.Tools/Providers/`
 

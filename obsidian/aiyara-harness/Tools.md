@@ -13,6 +13,7 @@ exceptions from `Execute` and turns them into an error string instead of crashin
 | Persona switch | `handoff` (`planner` / `reviewer` / `debugger` / `general`) |
 | MCP (dynamic) | One per capability reported by each connected MCP server, named `<server>_<tool>` — see [[MCP]] |
 | RAG (dynamic) | `search_documents`, only if `rag.json`'s `Enabled` is true — see [[RAG]] |
+| Web search (dynamic) | `web_search`, `web_fetch`, only if `websearch.json`'s `Enabled` is true — see [[Web Search]] |
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and
 not currently wired in.
@@ -27,4 +28,4 @@ not currently wired in.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Providers]]
+[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[Providers]]
