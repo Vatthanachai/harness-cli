@@ -21,7 +21,8 @@ This is the key design split in the whole project - everything either belongs to
   `logging.json` (`ShowThinking` / `LogThinking`, both off by default - see [[#Logging]]),
   `mcp.json` (MCP servers to connect to at startup - see [[MCP]]), `rag.json` (document indexing
   settings for the `search_documents` tool - see [[RAG]]), `websearch.json` (SearXNG `BaseUrl` +
-  `MaxResults` for the `web_search`/`web_fetch` tools - see [[Web Search]]).
+  `MaxResults` for the `web_search`/`web_fetch` tools - see [[Web Search]]), `ocr.json`
+  (`TessDataPath` + `Language` for the `ocr_image` tool - see [[OCR]]).
 - **Workspace-level**: `AIYARA.md` / `FILES.md` / `TOOLS.md` / `COMMANDS.md` / `MEMORY.md` at the
   project root (auto-loaded into the system prompt at startup — this harness's equivalent of
   Claude Code's `CLAUDE.md`), plus `.aiyara/skills/` (see [[Skills System]]).
@@ -60,4 +61,4 @@ input - see [[Multi-line Input Box]] for the interesting parts of that one.
 
 ## Related
 
-[[Index]] · [[Providers]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]
+[[Index]] · [[Providers]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[OCR]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]

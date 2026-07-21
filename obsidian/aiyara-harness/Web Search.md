@@ -97,4 +97,4 @@ the instance, versus a hosted API someone else keeps up - the JSON response shap
 
 ## Related
 
-[[Index]] · [[Tools]] · [[RAG]] · [[MCP]]
+[[Index]] · [[Tools]] · [[RAG]] · [[MCP]] · [[OCR]]

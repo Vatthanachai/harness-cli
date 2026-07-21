@@ -14,6 +14,7 @@ exceptions from `Execute` and turns them into an error string instead of crashin
 | MCP (dynamic) | One per capability reported by each connected MCP server, named `<server>_<tool>` — see [[MCP]] |
 | RAG (dynamic) | `search_documents`, only if `rag.json`'s `Enabled` is true — see [[RAG]] |
 | Web search (dynamic) | `web_search`, `web_fetch`, only if `websearch.json`'s `Enabled` is true — see [[Web Search]] |
+| OCR (dynamic) | `ocr_image`, only if `ocr.json`'s `Enabled` is true and its `TessDataPath` has a matching `.traineddata` file — see [[OCR]] |
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and
 not currently wired in.
@@ -28,4 +29,4 @@ not currently wired in.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[Providers]]
+[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[OCR]] · [[Providers]]

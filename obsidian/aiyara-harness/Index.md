@@ -11,6 +11,7 @@ Requires .NET SDK `10.0.301` and a reachable Ollama or LM Studio server (`http:/
 - [[MCP]] — connecting to MCP servers and exposing their tools to the model
 - [[RAG]] — indexing documents and the `search_documents` tool
 - [[Web Search]] — the `web_search`/`web_fetch` tools, backed by a self-hosted SearXNG instance
+- [[OCR]] — the `ocr_image` tool, backed by a local Tesseract engine
 - [[Slash Commands]] — the six built-in `/` commands (plus any skill, directly runnable as `/<skill-name>`)
 - [[Tools]] — the full tool catalog the model can call
 - [[Skills System]] — the workspace/user scope split, the shadowing rule, and invoking a skill directly via `/<skill-name>`
