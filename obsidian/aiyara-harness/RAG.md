@@ -146,6 +146,9 @@ instant startup); editing one file caused only that file to be re-embedded, and 
 showed up in the next search; and pointing `DocumentsPath` at a folder that doesn't exist logs a
 warning and just leaves `search_documents` unavailable, instead of crashing the harness.
 
+See [[Vector Store Config]] for the `harness config`/`/config` commands to actually pick or switch
+`Backend` - this section stays focused on the fields themselves.
+
 ## `rag.json` example
 
 ```json
@@ -172,4 +175,4 @@ from scratch.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Providers]] · [[MCP]] · [[Tools]]
+[[Index]] · [[Architecture]] · [[Providers]] · [[MCP]] · [[Tools]] · [[Vector Store Config]]

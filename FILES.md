@@ -24,22 +24,30 @@ so the model doesn't need to re-explore the tree every session.
 
 - `Program.cs` — startup: workspace trust check, offers to generate `AIYARA.md` if missing (runs
   one chat turn via `ChatSession.RunInitTurnAsync`), loads `AIYARA.md`/`FILES.md`/`TOOLS.md`/
-  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the chat engine (and an
-  `IEmbeddingClient`) for whichever provider `models.json`'s `Provider` names (`Ollama` or
-  `LMStudio` - see `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in
+  `COMMANDS.md`/`MEMORY.md` into the system prompt, builds the chat engine (an `IEmbeddingClient`,
+  and an `IChatEngineFactory` for `dispatch_agent` to build isolated sub-agents from later) for
+  whichever provider `models.json`'s `Provider` names (`Ollama` or `LMStudio` - see
+  `src/Aiyara.Harness.Tools/Providers/`), connects to any MCP servers in
   `mcp.json` and appends their tools (see `src/Aiyara.Harness.Tools/Mcp/`), builds/refreshes the
   RAG index and adds `search_documents` if `rag.json`'s `Enabled` is true (see
   `src/Aiyara.Harness.Tools/Rag/`), adds `web_search`/`web_fetch` if `websearch.json`'s `Enabled`
   is true (see `src/Aiyara.Harness.Tools/Web/`), adds `ocr_image` if `ocr.json`'s `Enabled` is true
   and its `TessDataPath` has a `.traineddata` file matching `Language` (see `OcrImageTool.cs`),
-  registers the built-in tools, starts the chat session. Builds
+  registers the built-in tools including `dispatch_agent` (added last, after every conditional
+  block above, so its tool-subset snapshot reflects whatever ended up enabled - see
+  `DispatchAgentTool.cs`), starts the chat session. Builds
   the Serilog file sink's path here rather than in `appsettings.json` -
   `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
   runtime to the current user's profile, not a path relative to wherever the process happens to be
   launched from (which is what a relative path in the JSON config would do). `appsettings.json`
   still owns the console sink and log-level settings.
 - `ChatSession.cs` — the interactive chat REPL loop; also exposes `RunInitTurnAsync` for the
-  one-off `AIYARA.md` generation turn at startup. `RunSlashCommandAsync` resolves `/<name>` against
+  one-off `AIYARA.md` generation turn at startup. `EnsureEventsWired` also subscribes to every
+  registered `DispatchAgentTool`'s `OnSubAgent*` events (prefixed `agent: ` in the console) so a
+  `dispatch_agent` call isn't a silent black box until its final report comes back - safe to share
+  `_thinkBuffer`/`FlushThinking` with the primary conversation's own events since the tool runs
+  synchronously inside the primary's tool-call loop, never concurrently with it.
+  `RunSlashCommandAsync` resolves `/<name>` against
   built-in commands first, then falls back to treating `<name>` as a skill (`/<skill-name> [extra
   instructions]`) - loads its content via `SkillStore.LoadContent` and sends it as the user's turn
   through the normal `SendMessageAsync` path, this harness's user-triggered equivalent of the
@@ -152,6 +160,17 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
   (`planner`, `reviewer`, `debugger`, or back to `general`) by swapping a marked-off block in the
   live chat engine's (`IChatEngine`, see `Providers/` below) system message; conversation history
   is untouched. Provider-agnostic - works the same against Ollama or LM Studio.
+- `DispatchAgentTool.cs` — `dispatch_agent`: delegates a bounded task to a genuinely isolated
+  sub-agent (own `IChatEngine` built via `IChatEngineFactory`, own message history, own tool
+  subset), unlike `HandoffTool`'s in-place persona swap. `agent_type` is `explore` (read-only
+  allowlist) or `general` (everything minus a hardcoded exclusion set: `dispatch_agent` itself, so
+  nesting is capped at depth 1 with no counter needed, plus `handoff`/`write_tasks`/`update_task`
+  since those specific tool *instances* are bound to the primary conversation's shared state and
+  would corrupt it if a sub-agent could call them). Registered last in `Program.cs`'s tool list so
+  its tool-subset snapshot reflects whatever RAG/websearch/OCR tools ended up enabled. Runs
+  sync-over-async inside `Execute`, same pattern as `WebSearchTool`. Re-exposes the sub-engine's
+  `OnThink`/`OnToolCall`/`OnToolResult` as `OnSubAgent*` events so `ChatSession` can render a
+  sub-agent's progress instead of it being a silent black box until the final report.
 - `WriteTasksTool.cs`, `UpdateTaskTool.cs` — create/update the shared `TaskBoard`.
 - `WriteSkillTool.cs`, `DeleteSkillTool.cs`, `UseSkillTool.cs`, `ListSkillsTool.cs` — create/update,
   permanently delete, load, and list skills (see `SkillStore.cs`). Both take an optional `scope`
@@ -182,9 +201,15 @@ vectors, for RAG), so `ChatSession`, `HandoffTool`, `SlashCommandContext`, `Mode
 `RagIndexBuilder` don't know or care which provider is active - `Program.cs` picks the
 implementations once at startup based on `ModelsOptions.Provider`.
 
-- `IChatEngine.cs`, `IModelCatalog.cs`, `IEmbeddingClient.cs` — the three interfaces.
-- `Ollama/OllamaChatEngine.cs`, `Ollama/OllamaModelCatalog.cs` — thin forwarding wrappers around
-  the real `OllamaSharp.Chat` / `IOllamaApiClient` (all the actual behavior is OllamaSharp's).
+- `IChatEngine.cs`, `IModelCatalog.cs`, `IEmbeddingClient.cs`, `IChatEngineFactory.cs` — the four
+  interfaces. `IChatEngineFactory.Create(model, systemPrompt)` builds a brand new, independent
+  `IChatEngine` against whichever client `Program.cs` already opened for the primary conversation -
+  factored out of the inline construction `Program.cs` used to do only once, so `DispatchAgentTool`
+  can build an isolated sub-agent without a second connection.
+- `Ollama/OllamaChatEngine.cs`, `Ollama/OllamaModelCatalog.cs`, `Ollama/OllamaChatEngineFactory.cs`
+  — thin forwarding wrappers around the real `OllamaSharp.Chat` / `IOllamaApiClient` (all the actual
+  behavior is OllamaSharp's). The factory reuses the same `RequestOptions` (`NumCtx: 32768`, etc.)
+  the primary chat gets, for the same reason: a thinking model needs the headroom.
 - `LmStudio/LmStudioChatEngine.cs` — hand-rolled client for LM Studio's OpenAI-compatible
   `/v1/chat/completions` (LM Studio has no equivalent of Ollama's native `/api/chat`). Owns the
   full streaming + agentic tool-call loop itself over a raw `HttpClient`/SSE, so it presents the
@@ -201,6 +226,8 @@ implementations once at startup based on `ModelsOptions.Provider`.
 - `Ollama/OllamaEmbeddingClient.cs` — wraps `IOllamaApiClient.EmbedAsync`.
 - `LmStudio/LmStudioEmbeddingClient.cs` — raw `POST /v1/embeddings` (OpenAI-compatible), parses
   `data[].embedding` in `index` order.
+- `LmStudio/LmStudioChatEngineFactory.cs` — reuses the shared `HttpClient` to build a fresh
+  `LmStudioChatEngine` per call.
 
 ## `src/Aiyara.Harness.Tools/Mcp/`
 

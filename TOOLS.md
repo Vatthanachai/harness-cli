@@ -64,6 +64,23 @@ how the model should use its own tools here — not a description of what the to
 - Pass `language` per call only to override `ocr.json`'s default for that one image (e.g. a Thai
   document while the default is `eng`) - don't pass it just to restate the default.
 
+## `dispatch_agent` usage
+
+- Use it to delegate a bounded, self-contained side task out of the main conversation - e.g. "find
+  where X is implemented and summarize it" - not for the actual work the user is asking you to do
+  turn by turn. If you'd normally just call `open_file`/`grep`-equivalent tools directly and use the
+  result yourself, do that instead of dispatching.
+- `agent_type: "explore"` for read-only investigation (it cannot write files or run commands) -
+  `agent_type: "general"` only when the sub-task genuinely needs to write files or run a command
+  itself, not by default.
+- The sub-agent sees only the `prompt` you give it, nothing from this conversation - write it as a
+  complete, self-contained brief, not a one-line pointer.
+- It cannot see or touch this conversation's task list (`write_tasks`/`update_task`) or switch this
+  conversation's persona (`handoff`) - those tools are withheld from every sub-agent on purpose, so
+  don't ask it to do either; update the task list yourself with what the sub-agent reports back.
+- It runs to completion before returning - there's no way to check on it partway through or cancel
+  it once dispatched.
+
 ## `write_skill` / `delete_skill` scope
 
 - Default to `scope: "workspace"` (or omit it) for anything specific to this project - it lives in

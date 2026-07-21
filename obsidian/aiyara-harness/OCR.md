@@ -51,4 +51,4 @@ a crash, but effectively means OCR is a Windows-only tool today.
 
 ## Related
 
-[[Index]] · [[Tools]] · [[Web Search]] · [[RAG]]
+[[Index]] · [[Tools]] · [[Web Search]] · [[RAG]] · [[Multi-Agent]]

@@ -112,6 +112,7 @@ The model can call these during a conversation (registered in `src/Aiyara.Harnes
 - `write_tasks`, `update_task` — create/update the in-session task list.
 - `write_skill`, `use_skill`, `list_skills`, `delete_skill` — manage skills (see [Skills](#skills)).
 - `handoff` — switch the model's own working mode to a built-in specialist persona (`planner`, `reviewer`, `debugger`, or back to `general`).
+- `dispatch_agent` — delegate a bounded, self-contained task to an isolated sub-agent (own system prompt, message history, and tool subset) and get back its final report as the tool result; `agent_type` is `explore` (read-only) or `general` (full access). Always registered, no config gate.
 
 `CommonTools.cs` (`GetCurrentDate`, `GetCurrentTime`, `GetWeather`) is excluded from the build and not currently wired in.
 

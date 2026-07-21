@@ -11,6 +11,7 @@ exceptions from `Execute` and turns them into an error string instead of crashin
 | Tasks | `write_tasks`, `update_task` |
 | Skills | `write_skill`, `use_skill`, `list_skills`, `delete_skill` — see [[Skills System]] |
 | Persona switch | `handoff` (`planner` / `reviewer` / `debugger` / `general`) |
+| Sub-agent delegate | `dispatch_agent` (`explore` / `general`) — see [[Multi-Agent]] |
 | MCP (dynamic) | One per capability reported by each connected MCP server, named `<server>_<tool>` — see [[MCP]] |
 | RAG (dynamic) | `search_documents`, only if `rag.json`'s `Enabled` is true — see [[RAG]] |
 | Web search (dynamic) | `web_search`, `web_fetch`, only if `websearch.json`'s `Enabled` is true — see [[Web Search]] |
@@ -29,4 +30,4 @@ not currently wired in.
 
 ## Related
 
-[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[OCR]] · [[Providers]]
+[[Index]] · [[Architecture]] · [[Slash Commands]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[OCR]] · [[Multi-Agent]] · [[Providers]]

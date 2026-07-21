@@ -29,6 +29,14 @@ This is the key design split in the whole project - everything either belongs to
 
 The same split shows up again inside skills specifically - see [[Skills System]].
 
+## Single agent, plus one delegate seam
+
+Everything in this file describes one running `IChatEngine` with one message history. The one
+seam that steps outside that is `dispatch_agent`, which spins up a second, fully independent
+`IChatEngine` via `IChatEngineFactory` for a bounded sub-task and returns only its final report -
+see [[Multi-Agent]]. It's additive, not a change to the single-agent model above: the primary
+conversation still has exactly one history, one `ToolRegistry`, one console.
+
 ## Logging
 
 The Serilog log file also lives under the user tier - `%USERPROFILE%\.aiyara\logs\harness-<date>.log`,
@@ -61,4 +69,4 @@ input - see [[Multi-line Input Box]] for the interesting parts of that one.
 
 ## Related
 
-[[Index]] · [[Providers]] · [[MCP]] · [[RAG]] · [[Web Search]] · [[OCR]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]
+[[Index]] · [[Providers]] · [[MCP]] · [[RAG]] · [[Vector Store Config]] · [[Web Search]] · [[OCR]] · [[Multi-Agent]] · [[Slash Commands]] · [[Tools]] · [[Skills System]]

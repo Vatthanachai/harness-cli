@@ -2,6 +2,7 @@ using System.Text;
 
 using Aiyara.Harness.Cli.Commands;
 using Aiyara.Harness.Models.Config;
+using Aiyara.Harness.Tools;
 using Aiyara.Harness.Tools.Providers;
 
 using Serilog;
@@ -65,9 +66,10 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
         {
             if (result.Result is string text && !string.IsNullOrWhiteSpace(text))
             {
-                // The task list needs to actually be readable, not chopped mid-line at 200 chars.
-                var isTaskListUpdate = result.Tool?.Function?.Name is "write_tasks" or "update_task";
-                var cap = isTaskListUpdate ? 2000 : 200;
+                // The task list and a sub-agent's final report both need to actually be readable,
+                // not chopped mid-line at 200 chars.
+                var needsLongerDisplay = result.Tool?.Function?.Name is "write_tasks" or "update_task" or "dispatch_agent";
+                var cap = needsLongerDisplay ? 2000 : 200;
                 var display = text.Length > cap ? text[..cap] + "..." : text;
                 ConsoleTheme.WriteToolResult(display);
             }
@@ -79,6 +81,33 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
                 _pendingImageAttachments.Enqueue(base64);
             }
         };
+
+        // A dispatch_agent call otherwise runs as a silent black box until it returns its final
+        // report - forward its sub-agent's own thinking/tool-call/tool-result events through the
+        // same display path as the primary conversation's, prefixed so it's clear which is which.
+        // Safe to reuse _thinkBuffer/FlushThinking as-is: DispatchAgentTool.Execute runs
+        // synchronously inside the primary tool-call loop, so there's never a primary stream and a
+        // sub-agent stream in flight on the console at the same time.
+        foreach (var dispatchTool in toolRegistry.All.OfType<DispatchAgentTool>())
+        {
+            dispatchTool.OnSubAgentThink += (_, thought) => _thinkBuffer.Append(thought);
+
+            dispatchTool.OnSubAgentToolCall += (_, call) =>
+            {
+                FlushThinking();
+                if (call.Function?.Name is { } name)
+                    ConsoleTheme.WriteToolCallHeader($"agent: {name}");
+            };
+
+            dispatchTool.OnSubAgentToolResult += (_, result) =>
+            {
+                if (result.Result is string text && !string.IsNullOrWhiteSpace(text))
+                {
+                    var display = text.Length > 200 ? text[..200] + "..." : text;
+                    ConsoleTheme.WriteToolResult(display);
+                }
+            };
+        }
     }
 
     private async Task SendMessageAsync(string message)

@@ -117,6 +117,7 @@ try
     IChatEngine chatEngine;
     IModelCatalog modelCatalog;
     IEmbeddingClient embeddingClient;
+    IChatEngineFactory chatEngineFactory;
 
     // HttpClient's default Timeout is 100 seconds, which a local reasoning model blows through
     // routinely once it starts a long "thinking" phase (e.g. for a planning-style prompt) - the
@@ -148,6 +149,7 @@ try
         chatEngine = new OllamaChatEngine(chat);
         modelCatalog = new OllamaModelCatalog(ollama);
         embeddingClient = new OllamaEmbeddingClient(ollama);
+        chatEngineFactory = new OllamaChatEngineFactory(ollama);
     }
     else
     {
@@ -161,6 +163,7 @@ try
         chatEngine = new LmStudioChatEngine(httpClient, models.Default, systemPrompt.ToString());
         modelCatalog = new LmStudioModelCatalog(httpClient);
         embeddingClient = new LmStudioEmbeddingClient(httpClient);
+        chatEngineFactory = new LmStudioChatEngineFactory(httpClient);
     }
 
     var taskBoard = new TaskBoard();
@@ -259,6 +262,11 @@ try
                 ocrOptions.TessDataPath, primaryLanguage);
         }
     }
+
+    // Registered last, after every conditional block above, so the snapshot it captures reflects
+    // whichever optional tools (RAG/websearch/OCR) actually ended up enabled this session - see
+    // DispatchAgentTool.ToolsFor.
+    tools.Add(new DispatchAgentTool(chatEngineFactory, systemPrompt.ToString(), chatEngine, tools.ToList()));
 
     static async Task<IVectorStore> CreateSqliteVecStoreAsync(RagOptions options)
     {
