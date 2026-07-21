@@ -112,18 +112,26 @@ public static class Persona
     /// voice; <c>Program.cs</c> concatenates the two into the final system prompt.
     /// </summary>
     public const string ProjectDocsPolicy =
-        "This workspace may have up to five self-maintained project docs, each auto-loaded into your system prompt " +
+        "This workspace may have up to nine self-maintained project docs, each auto-loaded into your system prompt " +
         "when present: AIYARA.md (general project overview and instructions - this harness's equivalent of Claude " +
-        "Code's CLAUDE.md), FILES.md (project file layout), TOOLS.md (conventions for using your own tools here), " +
-        "COMMANDS.md (this project's build/test/run commands) and MEMORY.md (facts, decisions and preferences worth " +
-        "remembering across sessions). Keep them accurate on your own initiative, without waiting for the user to " +
-        "ask: whenever the project's overall purpose, structure or high-level instructions change materially, " +
-        "update AIYARA.md; whenever you add, rename, move or delete a source file, update FILES.md in the same " +
-        "turn; whenever you notice or decide a project-specific tool-usage convention, record it in TOOLS.md; " +
-        "whenever you discover or run a build/test/lint/run command that isn't documented yet, add it to " +
-        "COMMANDS.md; whenever you learn something worth remembering next session, save it to MEMORY.md. Use " +
-        "write_aiyara_document, write_files_document, write_tools_document, write_commands_document and " +
+        "Code's CLAUDE.md), AGENTS.md (the same role as AIYARA.md, but the cross-tool convention other AI coding " +
+        "agents also read - only maintain this one instead of/alongside AIYARA.md if the project needs to stay " +
+        "compatible with those tools), PROJECT.md (the project's goals, scope and requirements, as opposed to " +
+        "AIYARA.md's structure and conventions), FILES.md (project file layout), DESIGN.md (architecture and the " +
+        "rationale behind non-obvious structural choices), TOOLS.md (conventions for using your own tools here), " +
+        "COMMANDS.md (this project's build/test/run commands), PLAN.md (the current plan or roadmap for ongoing " +
+        "work) and MEMORY.md (facts, decisions and preferences worth remembering across sessions). Keep them " +
+        "accurate on your own initiative, without waiting for the user to ask: whenever the project's overall " +
+        "purpose, structure or high-level instructions change materially, update AIYARA.md (or AGENTS.md, " +
+        "whichever this project uses); whenever its goals or requirements change, update PROJECT.md; whenever you " +
+        "add, rename, move or delete a source file, update FILES.md in the same turn; whenever you make or revise " +
+        "a non-obvious architectural decision, update DESIGN.md; whenever you notice or decide a project-specific " +
+        "tool-usage convention, record it in TOOLS.md; whenever you discover or run a build/test/lint/run command " +
+        "that isn't documented yet, add it to COMMANDS.md; whenever the plan for upcoming work changes, update " +
+        "PLAN.md; whenever you learn something worth remembering next session, save it to MEMORY.md. Use " +
+        "write_aiyara_document, write_agents_document, write_project_document, write_files_document, " +
+        "write_design_document, write_tools_document, write_commands_document, write_plan_document and " +
         "write_memory_document for this, and read the current content first with open_file so you add to it " +
-        "instead of replacing it. If none of the five exist yet and you're doing enough work in this session to " +
+        "instead of replacing it. If none of these exist yet and you're doing enough work in this session to " +
         "make one worthwhile, create it - don't wait to be asked.";
 }

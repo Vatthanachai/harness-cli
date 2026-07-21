@@ -102,9 +102,13 @@ try
     foreach (var (fileName, heading, content) in new[]
              {
                  (AiyaraDocument.FileName, "Project overview", AiyaraDocument.Load()),
+                 (AgentsDocument.FileName, "Project overview (cross-tool)", AgentsDocument.Load()),
+                 (ProjectDocument.FileName, "Project goals and requirements", ProjectDocument.Load()),
                  (FilesDocument.FileName, "Project files", FilesDocument.Load()),
+                 (DesignDocument.FileName, "Architecture and design decisions", DesignDocument.Load()),
                  (ToolsDocument.FileName, "Tool usage conventions", ToolsDocument.Load()),
                  (CommandsDocument.FileName, "Build/test/run commands", CommandsDocument.Load()),
+                 (PlanDocument.FileName, "Current plan/roadmap", PlanDocument.Load()),
                  (MemoryDocument.FileName, "Persistent notes", MemoryDocument.Load())
              })
     {
@@ -178,9 +182,13 @@ try
         new SaveImageTool(),
         new SetStatuslineCommandTool(),
         new AiyaraDocumentTool(),
+        new AgentsDocumentTool(),
+        new ProjectDocumentTool(),
         new FilesDocumentTool(),
+        new DesignDocumentTool(),
         new ToolsDocumentTool(),
         new CommandsDocumentTool(),
+        new PlanDocumentTool(),
         new MemoryDocumentTool(),
         new RunCommandTool(),
         new HandoffTool(chatEngine),
@@ -305,7 +313,7 @@ try
     var slashContext = new SlashCommandContext(modelCatalog, chatEngine, toolRegistry, skillRegistry, terminalUI);
     var chatSession = new ChatSession(chatEngine, toolRegistry, slashCommands, slashContext, terminalUI);
 
-    if (!File.Exists(AiyaraDocument.PathAtWorkspaceRoot))
+    if (!File.Exists(AiyaraDocument.PathAtWorkspaceRoot) && !File.Exists(AgentsDocument.PathAtWorkspaceRoot))
     {
         var wantsInit = ConsentPrompt.Confirm(
             "AIYARA.md generation",
