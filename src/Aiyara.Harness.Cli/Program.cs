@@ -137,6 +137,17 @@ try
                 new AuthenticationHeaderValue("Bearer", ollamaConnection.AccessToken);
 
         var ollama = new OllamaApiClient(httpClient, models.Default);
+        var ollamaCatalog = new OllamaModelCatalog(ollama);
+
+        // Ollama rejects a "think" request outright from a model that doesn't advertise the
+        // capability, so EnableThinking (models.json) only actually takes effect once the selected
+        // model confirms support via /api/show - otherwise thinking is force-disabled for this
+        // session rather than crashing the first turn.
+        var supportsThinking = models.EnableThinking && await ollamaCatalog.SupportsThinkingAsync(models.Default);
+        if (models.EnableThinking && !supportsThinking)
+            Log.Warning(
+                "'{Model}' doesn't advertise thinking support - disabling for this session (models.json's EnableThinking has no effect on a non-thinking model)",
+                models.Default);
 
         // 4096 is nowhere near enough for a "thinking" model: reasoning content for a non-trivial
         // prompt (e.g. "make a plan for X") easily runs past it, forcing Ollama's context to shift
@@ -148,12 +159,12 @@ try
         // console display) - keep in sync with OllamaChatEngineFactory's sub-agent NumCtx.
         var chat = new Chat(ollama, systemPrompt.ToString())
         {
-            Think = ThinkValue.High,
+            Think = supportsThinking ? ThinkValue.High : null,
             Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 65536 }
         };
 
         chatEngine = new OllamaChatEngine(chat);
-        modelCatalog = new OllamaModelCatalog(ollama);
+        modelCatalog = ollamaCatalog;
         embeddingClient = new OllamaEmbeddingClient(ollama);
         chatEngineFactory = new OllamaChatEngineFactory(ollama);
     }
@@ -166,7 +177,7 @@ try
             httpClient.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", lmStudioConnection.AccessToken);
 
-        chatEngine = new LmStudioChatEngine(httpClient, models.Default, systemPrompt.ToString());
+        chatEngine = new LmStudioChatEngine(httpClient, models.Default, systemPrompt.ToString(), enableThinking: models.EnableThinking);
         modelCatalog = new LmStudioModelCatalog(httpClient);
         embeddingClient = new LmStudioEmbeddingClient(httpClient);
         chatEngineFactory = new LmStudioChatEngineFactory(httpClient);

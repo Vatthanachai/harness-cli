@@ -40,6 +40,17 @@ public interface IModelCatalog
     Task<IReadOnlyList<ModelSummary>> ListModelsAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Whether <paramref name="model"/> advertises support for reasoning/"thinking" output. Ollama
+    /// reports this via its <c>/api/show</c> capabilities and rejects a "think" request from a
+    /// model that doesn't have it, so this gates whether the harness ever asks. LM Studio's API
+    /// exposes no equivalent signal (only <c>tool_use</c> is confirmed live, see
+    /// <see cref="ListModelsAsync"/>), and never fails from an unsupported request there anyway -
+    /// the harness only opportunistically forwards <c>reasoning_content</c> if a model happens to
+    /// stream it - so it always reports true.
+    /// </summary>
+    Task<bool> SupportsThinkingAsync(string model, CancellationToken ct = default);
+
+    /// <summary>
     /// Pulls <paramref name="modelName"/> from a remote registry, streaming progress. Throws
     /// <see cref="NotSupportedException"/> for providers (LM Studio) with no such capability.
     /// </summary>

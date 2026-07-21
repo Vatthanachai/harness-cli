@@ -1,3 +1,5 @@
+using Aiyara.Harness.Models.Config;
+
 using OllamaSharp;
 using OllamaSharp.Models;
 using OllamaSharp.Models.Chat;
@@ -13,12 +15,18 @@ namespace Aiyara.Harness.Tools.Providers.Ollama;
 /// </summary>
 public sealed class OllamaChatEngineFactory(IOllamaApiClient client) : IChatEngineFactory
 {
-    public IChatEngine Create(string model, string systemPrompt)
+    public async Task<IChatEngine> CreateAsync(string model, string systemPrompt, CancellationToken ct = default)
     {
+        // Reloaded fresh per sub-agent (rather than captured once at Program.cs startup) so a
+        // "/config set models EnableThinking false" between dispatches applies to the next one,
+        // same reasoning as ChatSession.FlushThinking rereading logging.json each flush.
+        var enableThinking = UserConfigStore.Load("models.json", new ModelsOptions()).EnableThinking;
+        var supportsThinking = enableThinking && await new OllamaModelCatalog(client).SupportsThinkingAsync(model, ct);
+
         var chat = new Chat(client, systemPrompt)
         {
             Model = model,
-            Think = ThinkValue.High,
+            Think = supportsThinking ? ThinkValue.High : null,
             Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 65536 }
         };
 

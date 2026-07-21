@@ -27,6 +27,7 @@ Same as the `harness config` CLI, without leaving the chat.
 /config set ollama AccessToken sk-abc123
 /config set models Provider LMStudio
 /config set models Default qwen3:8b
+/config set models EnableThinking false
 /config set logging ShowThinking true
 /config set logging LogThinking true
 /config edit statusline

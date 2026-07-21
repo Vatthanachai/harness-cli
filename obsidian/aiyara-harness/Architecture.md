@@ -16,7 +16,7 @@ This is the key design split in the whole project - everything either belongs to
 
 - **User-level**: `%USERPROFILE%\.aiyara\*.json` — `ollama.json` / `lmstudio.json` (server URL,
   access token - only one is used, per `models.json`'s `Provider`), `models.json` (default model
-  + `Provider: Ollama|LMStudio`, read once at startup - see [[Providers]]), `statusline.json`
+  + `Provider: Ollama|LMStudio` + `EnableThinking`, read once at startup - see [[Providers]]), `statusline.json`
   (custom status line command), `trust.json` (approved workspace folders / external paths),
   `logging.json` (`ShowThinking` / `LogThinking`, both off by default - see [[#Logging]]),
   `mcp.json` (MCP servers to connect to at startup - see [[MCP]]), `rag.json` (document indexing

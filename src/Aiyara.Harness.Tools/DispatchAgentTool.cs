@@ -149,7 +149,7 @@ public sealed class DispatchAgentTool : BaseTool
     private async Task<string> RunAsync((string Name, string Description, string Focus) type, string prompt)
     {
         var systemPrompt = $"{_baseSystemPrompt}\n\n### Sub-agent role ###\n{type.Focus}";
-        var engine = _factory.Create(_primaryEngine.Model, systemPrompt);
+        var engine = await _factory.CreateAsync(_primaryEngine.Model, systemPrompt);
         var subAgentTools = ToolsFor(type.Name);
 
         engine.OnThink += (_, thought) => OnSubAgentThink?.Invoke(this, thought);

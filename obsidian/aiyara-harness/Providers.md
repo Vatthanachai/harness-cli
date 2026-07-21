@@ -41,8 +41,24 @@ Lists/switches models, and (where supported) pulls a missing one - backs [[Slash
 
 | Implementation | Source | Notes |
 |---|---|---|
-| `Ollama/OllamaModelCatalog` | `IOllamaApiClient.ListLocalModelsAsync`/`PullModelAsync` | Reports every model as supporting tools (Ollama's listing endpoint doesn't expose capability info either way). |
-| `LmStudio/LmStudioModelCatalog` | LM Studio's own `/api/v0/models` (richer than the plain OpenAI `/v1/models`) | Exposes per-model `state` (loaded/not-loaded) and `capabilities` (`tool_use`) - confirmed live that non-`tool_use` models exist and get correctly flagged. `PullModelAsync` throws `NotSupportedException` - LM Studio has no API to pull a model it doesn't already have; the error message suggests `lms get <model>` instead. |
+| `Ollama/OllamaModelCatalog` | `IOllamaApiClient.ListLocalModelsAsync`/`PullModelAsync` | Reports every model as supporting tools (Ollama's listing endpoint doesn't expose capability info either way). `SupportsThinkingAsync` is a separate `ShowModelAsync` (`/api/show`) call, checking `Capabilities.Contains("thinking")`. |
+| `LmStudio/LmStudioModelCatalog` | LM Studio's own `/api/v0/models` (richer than the plain OpenAI `/v1/models`) | Exposes per-model `state` (loaded/not-loaded) and `capabilities` (`tool_use`) - confirmed live that non-`tool_use` models exist and get correctly flagged. `PullModelAsync` throws `NotSupportedException` - LM Studio has no API to pull a model it doesn't already have; the error message suggests `lms get <model>` instead. `SupportsThinkingAsync` always reports `true` - no equivalent capability signal exposed, and nothing there fails from asking anyway (see § Thinking config below). |
+
+### Thinking config
+
+`models.json`'s `EnableThinking` (default `true`) toggles whether the model is asked to stream
+reasoning/thinking content. It only actually takes effect on Ollama once `SupportsThinkingAsync`
+confirms the *selected* model advertises the `thinking` capability - Ollama rejects a `think`
+request outright from a model that can't honor it, so an unsupported model gets thinking
+force-disabled for the session regardless of the flag (a warning is logged when that override
+kicks in). LM Studio has no such failure mode - the harness never explicitly requests thinking
+there, it only opportunistically forwards `delta.reasoning_content` if a model streams it - so
+`EnableThinking=false` there just means `LmStudioChatEngine` drops that content instead of raising
+`OnThink`.
+
+Read once at startup for the primary conversation, and once per `dispatch_agent` sub-agent
+(`OllamaChatEngineFactory`/`LmStudioChatEngineFactory` reload `models.json` fresh on each
+`CreateAsync`) - not live-reloaded mid-turn, same as `Provider`.
 
 ## `IEmbeddingClient`
 
@@ -59,16 +75,18 @@ Confirmed live on both: Ollama's `nomic-embed-text` and LM Studio's
 
 ## Config
 
-`models.json`: `Default` (model name) + `Provider` (`Ollama`/`LMStudio`) - now a `record`, not a
-plain class, so `SlashCommandContext.SwitchModel` can update `Default` via a `with`-expression
-without silently resetting `Provider` back to its default on every `/model` switch. `lmstudio.json`
-mirrors `ollama.json`'s shape (`BaseUrl`, `AccessToken`), default `http://localhost:1234`.
+`models.json`: `Default` (model name) + `Provider` (`Ollama`/`LMStudio`) + `EnableThinking` - now a
+`record`, not a plain class, so `SlashCommandContext.SwitchModel` can update `Default` via a
+`with`-expression without silently resetting `Provider`/`EnableThinking` back to their defaults on
+every `/model` switch. `lmstudio.json` mirrors `ollama.json`'s shape (`BaseUrl`, `AccessToken`),
+default `http://localhost:1234`.
 
 **`models.json`** (LM Studio active):
 ```json
 {
   "Default": "google/gemma-4-e4b",
-  "Provider": "LMStudio"
+  "Provider": "LMStudio",
+  "EnableThinking": true
 }
 ```
 

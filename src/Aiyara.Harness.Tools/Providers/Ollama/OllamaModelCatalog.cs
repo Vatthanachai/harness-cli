@@ -23,6 +23,22 @@ public sealed class OllamaModelCatalog(IOllamaApiClient client) : IModelCatalog
         return models.Select(m => new ModelSummary(m.Name, SupportsTools: true, IsLoaded: null)).ToList();
     }
 
+    public async Task<bool> SupportsThinkingAsync(string model, CancellationToken ct = default)
+    {
+        try
+        {
+            var info = await client.ShowModelAsync(new ShowModelRequest { Model = model }, ct);
+            return info.Capabilities?.Contains("thinking") == true;
+        }
+        catch (Exception)
+        {
+            // Can't confirm capability (model not pulled yet, server unreachable, ...) - fail
+            // closed: better a model silently doesn't think than a "think" request Ollama rejects
+            // outright for a model that can't honor it.
+            return false;
+        }
+    }
+
     public async IAsyncEnumerable<ModelPullProgress> PullModelAsync(
         string modelName,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)

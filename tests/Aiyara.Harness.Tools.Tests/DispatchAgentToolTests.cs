@@ -99,10 +99,10 @@ public sealed class DispatchAgentToolTests
 
     private sealed class FakeChatEngineFactory(FakeChatEngine engine) : IChatEngineFactory
     {
-        public IChatEngine Create(string model, string systemPrompt)
+        public Task<IChatEngine> CreateAsync(string model, string systemPrompt, CancellationToken ct = default)
         {
             engine.LastRequestedModel = model;
-            return engine;
+            return Task.FromResult<IChatEngine>(engine);
         }
     }
 

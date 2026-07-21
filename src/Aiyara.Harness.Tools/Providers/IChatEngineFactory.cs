@@ -12,7 +12,9 @@ public interface IChatEngineFactory
     /// <summary>
     /// Creates a new <see cref="IChatEngine"/> with its own message history, using <paramref name="model"/>
     /// and <paramref name="systemPrompt"/> - entirely independent of any other engine this factory
-    /// has created, including the primary conversation's.
+    /// has created, including the primary conversation's. Async because the Ollama implementation
+    /// checks the model's thinking capability (an <c>/api/show</c> round-trip) before deciding
+    /// whether to request it - see <c>OllamaChatEngineFactory</c>.
     /// </summary>
-    IChatEngine Create(string model, string systemPrompt);
+    Task<IChatEngine> CreateAsync(string model, string systemPrompt, CancellationToken ct = default);
 }

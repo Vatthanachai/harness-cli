@@ -57,6 +57,13 @@ public sealed class LmStudioModelCatalog(HttpClient http) : IModelCatalog
     }
 
     /// <summary>
+    /// LM Studio exposes no capability signal for reasoning/"thinking" support (see
+    /// <see cref="IModelCatalog.SupportsThinkingAsync"/>), and there's nothing to fail here either
+    /// way, so this always reports true.
+    /// </summary>
+    public Task<bool> SupportsThinkingAsync(string model, CancellationToken ct = default) => Task.FromResult(true);
+
+    /// <summary>
     /// LM Studio has no API-driven registry to pull from - models are downloaded out-of-band via
     /// the <c>lms</c> CLI or the LM Studio app.
     /// </summary>

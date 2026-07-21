@@ -24,17 +24,20 @@ public sealed class LmStudioChatEngine : IChatEngine
     private readonly HttpClient _http;
     private readonly float _temperature;
     private readonly float _topP;
+    private readonly bool _enableThinking;
 
     // Keyed by message reference rather than content: LM Studio's tool_call_id is expected on the
     // matching tool-result message, but OllamaSharp's Message type has no such field to store it
     // on directly.
     private readonly Dictionary<Message, string> _toolCallIdByMessage = new();
 
-    public LmStudioChatEngine(HttpClient http, string model, string systemPrompt, float temperature = 0.7f, float topP = 0.9f)
+    public LmStudioChatEngine(
+        HttpClient http, string model, string systemPrompt, float temperature = 0.7f, float topP = 0.9f, bool enableThinking = true)
     {
         _http = http;
         _temperature = temperature;
         _topP = topP;
+        _enableThinking = enableThinking;
         Model = model;
         Messages = [new Message(ChatRole.System, systemPrompt)];
     }
@@ -77,7 +80,8 @@ public sealed class LmStudioChatEngine : IChatEngine
                 if (!choice.TryGetProperty("delta", out var delta))
                     continue;
 
-                if (delta.TryGetProperty("reasoning_content", out var reasoning) && reasoning.ValueKind == JsonValueKind.String)
+                if (_enableThinking &&
+                    delta.TryGetProperty("reasoning_content", out var reasoning) && reasoning.ValueKind == JsonValueKind.String)
                 {
                     var thought = reasoning.GetString()!;
                     if (thought.Length > 0) OnThink?.Invoke(this, thought);
