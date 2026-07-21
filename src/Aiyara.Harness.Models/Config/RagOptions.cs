@@ -13,14 +13,18 @@ public sealed class RagOptions
     public bool Enabled { get; init; }
 
     /// <summary>
-    /// Folder containing the source documents to index.
+    /// Folder containing the source documents to index. Defaults to a subfolder under
+    /// <see cref="UserConfigPaths.Directory"/> so RAG works out of the box without requiring the
+    /// user to pick a location first.
     /// </summary>
-    public string DocumentsPath { get; init; } = "";
+    public string DocumentsPath { get; init; } = Path.Combine(UserConfigPaths.Directory, "rag", "documents");
 
     /// <summary>
-    /// Folder where the vector store is persisted.
+    /// Folder where the vector store is persisted. Kept as its own subfolder, separate from
+    /// <see cref="DocumentsPath"/>, so indexing never mistakes the store's own files for source
+    /// documents to embed.
     /// </summary>
-    public string VectorStorePath { get; init; } = "";
+    public string VectorStorePath { get; init; } = Path.Combine(UserConfigPaths.Directory, "rag", "vectorstore");
 
     /// <summary>
     /// Which vector store implementation backs indexing/search - defaults to

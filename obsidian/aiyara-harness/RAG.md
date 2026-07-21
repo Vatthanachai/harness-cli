@@ -44,8 +44,13 @@ defaults to `Json`.
 ## Indexing (`RagIndexBuilder.BuildAsync`)
 
 1. Resolves `DocumentsPath`/`VectorStorePath` through `Workspace.ResolvePath` - same workspace
-   confinement every other file-touching feature already respects. `VectorStorePath` defaults to
-   `.aiyara/rag` under the workspace root when left empty.
+   confinement every other file-touching feature already respects. A freshly-seeded `rag.json`
+   defaults both to their own subfolder under the user config directory - `DocumentsPath` to
+   `<UserConfigPaths.Directory>/rag/documents`, `VectorStorePath` to
+   `<UserConfigPaths.Directory>/rag/vectorstore` (`RagOptions`) - kept separate so indexing never
+   walks the store's own files as source documents. An older `rag.json` with `VectorStorePath: ""`
+   still falls back to `.aiyara/rag` under the workspace root instead (`JsonVectorStore`/
+   `SqliteVectorStore`/`SqliteVecVectorStore`.`FromOptionsAsync`), for back-compat.
 2. The active store loads the persisted collection if present - but discards it entirely (full
    rebuild) if its `EmbeddingModel`/`ChunkSize`/`ChunkOverlap` no longer match `rag.json`, rather
    than risk mixing incompatible embedding spaces or chunk boundaries.
@@ -146,8 +151,8 @@ warning and just leaves `search_documents` unavailable, instead of crashing the 
 ```json
 {
   "Enabled": true,
-  "DocumentsPath": ".",
-  "VectorStorePath": "",
+  "DocumentsPath": "C:\\Users\\alice\\.aiyara\\rag\\documents",
+  "VectorStorePath": "C:\\Users\\alice\\.aiyara\\rag\\vectorstore",
   "Backend": "SqliteVec",
   "EmbeddingModel": "text-embedding-nomic-embed-text-v1.5",
   "ChunkSize": 512,
@@ -158,10 +163,12 @@ warning and just leaves `search_documents` unavailable, instead of crashing the 
 
 `EmbeddingModel` has to match whatever's actually loaded/pullable on the active provider - e.g.
 `nomic-embed-text` for Ollama vs. `text-embedding-nomic-embed-text-v1.5` for LM Studio in the
-example above, even though both are the same underlying model. `VectorStorePath: ""` uses the
-`.aiyara/rag` default. `Backend` is `Json` if omitted - set it to `Sqlite` to switch; switching
-after documents are already indexed doesn't migrate data between the two, it starts the new
-backend's store empty and reindexes from scratch.
+example above, even though both are the same underlying model. `DocumentsPath`/`VectorStorePath`
+above are what a freshly-seeded `rag.json` now ships with by default (own subfolder each, under the
+user config directory) - point `DocumentsPath` at wherever the real source documents live instead.
+`Backend` is `Json` if omitted - set it to `Sqlite` to switch; switching after documents are already
+indexed doesn't migrate data between the two, it starts the new backend's store empty and reindexes
+from scratch.
 
 ## Related
 
