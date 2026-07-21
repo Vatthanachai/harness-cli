@@ -80,6 +80,7 @@ try
     var mcpOptions = UserConfigStore.Load("mcp.json", new McpOptions());
     var ragOptions = UserConfigStore.Load("rag.json", new RagOptions());
     var webSearchOptions = UserConfigStore.Load("websearch.json", new WebSearchOptions());
+    var ocrOptions = UserConfigStore.Load("ocr.json", new OcrOptions());
 
     var systemPrompt = new StringBuilder(Persona.SystemPrompt);
     systemPrompt.Append($"\n\n{Persona.WorkingPrinciples}");
@@ -235,6 +236,27 @@ try
             // Same resilience policy as a broken MCP server or an invalid RAG config: log and
             // keep starting rather than failing the whole session over one optional tool.
             Log.Warning(ex, "websearch.json's BaseUrl is not a valid URL - web_search/web_fetch will not be available this session");
+        }
+    }
+
+    if (ocrOptions.Enabled)
+    {
+        // Tesseract needs the trained-data file for the configured language present on disk before
+        // it can do anything useful - checked up front (rather than only discovered on the first
+        // ocr_image call) so the tool is simply absent from this session, same resilience policy as
+        // a broken MCP server or an invalid RAG/websearch config.
+        var primaryLanguage = ocrOptions.Language.Split('+')[0];
+        var trainedDataFile = Path.Combine(ocrOptions.TessDataPath, $"{primaryLanguage}.traineddata");
+
+        if (File.Exists(trainedDataFile))
+        {
+            tools.Add(new OcrImageTool(ocrOptions.TessDataPath, ocrOptions.Language));
+        }
+        else
+        {
+            Log.Warning(
+                "ocr.json's TessDataPath ({TessDataPath}) has no {Language}.traineddata - ocr_image will not be available this session",
+                ocrOptions.TessDataPath, primaryLanguage);
         }
     }
 

@@ -59,6 +59,7 @@ time each is read:
 | `mcp.json` | `Servers` — [MCP](https://modelcontextprotocol.io) server definitions (`Name`, `Command`, `Args`, `Env`), each launched over stdio at startup. Every tool the server reports is exposed to the model as `<Name>_<tool>` (e.g. a server named `github` exposing `search_issues` becomes `github_search_issues`), alongside the built-in tools — `/tools` lists and toggles them the same way. A server that fails to launch or complete the MCP handshake is skipped with a warning logged, rather than stopping the harness from starting. |
 | `rag.json` | `Enabled` — turns retrieval-augmented generation on. `DocumentsPath` — folder (relative to the workspace root, unless absolute) to index. `VectorStorePath` — where the index is persisted; defaults to `.aiyara/rag` under the workspace root if left empty. `Backend` — `Json` (default; one JSON file, simplest), `Sqlite` (one shared `vectors.db`, only rewrites changed rows, safe for concurrent readers/writers), or `SqliteVec` (same as `Sqlite`, plus the `sqlite-vec` extension for native SIMD-accelerated search; falls back to `Sqlite` with a warning if the extension can't load on this machine). `EmbeddingModel` — embedding model name on whichever provider is active (e.g. `nomic-embed-text` on Ollama, `text-embedding-nomic-embed-text-v1.5` on LM Studio). `ChunkSize`/`ChunkOverlap` — characters per chunk / shared between consecutive chunks. `TopK` — chunks returned per query. When enabled, the harness (re)indexes `DocumentsPath` at startup — incrementally, only embedding files that are new or changed since the index was last built — and exposes a `search_documents` tool the model calls on demand (see [Tools](#tools)); a bad path or embedding failure is logged as a warning and just leaves `search_documents` unavailable, rather than stopping the harness from starting. |
 | `websearch.json` | `Enabled` — turns the `web_search`/`web_fetch` tools on. `BaseUrl` — base URL of a self-hosted [SearXNG](https://github.com/searxng/searxng) instance `web_search` queries, e.g. `http://localhost:8080`; no API key needed. `MaxResults` — results returned per `web_search` query (default `5`). SearXNG must have `json` listed under `search.formats` in its `settings.yml`, or every query 403s. If `BaseUrl` isn't a valid URL, a warning is logged and both tools are left unavailable for the session, rather than stopping the harness from starting. |
+| `ocr.json` | `Enabled` — turns the `ocr_image` tool on. `TessDataPath` — folder holding [Tesseract](https://github.com/tesseract-ocr/tesseract) `.traineddata` files (get them from the [tessdata repo](https://github.com/tesseract-ocr/tessdata)); defaults to a subfolder under the config directory. `Language` — Tesseract language code used when a call doesn't specify one, e.g. `eng` or `eng+tha` (default `eng`). Fully offline, no API key needed. If `TessDataPath` has no `.traineddata` file matching `Language`, a warning is logged and the tool is left unavailable for the session, rather than stopping the harness from starting. |
 
 Edit them from the command line without starting a chat session:
 
@@ -69,7 +70,7 @@ harness config set <category> <key> <value>  # change a single value
 harness config edit <category>                # open a category's JSON file in your default editor
 ```
 
-`category` is one of `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `websearch`, `statusline`, `trust`, `logging`.
+`category` is one of `ollama`, `lmstudio`, `models`, `mcp`, `rag`, `websearch`, `ocr`, `statusline`, `trust`, `logging`.
 
 ### Choosing a provider
 
@@ -118,6 +119,7 @@ Plus, dynamically:
 - One tool per capability reported by each connected [MCP](#configuration) server (`mcp.json`), named `<server>_<tool>`.
 - `search_documents` — searches the RAG index built from `rag.json`'s `DocumentsPath`, if `Enabled: true`.
 - `web_search`, `web_fetch` — search the public web (via a self-hosted [SearXNG](https://github.com/searxng/searxng) instance) and fetch a URL's text content, if `websearch.json`'s `Enabled: true`.
+- `ocr_image` — extract text from an image file via a local [Tesseract](https://github.com/tesseract-ocr/tesseract) OCR engine, if `ocr.json`'s `Enabled: true` and a matching `.traineddata` file is present.
 
 ## Skills
 

@@ -53,6 +53,17 @@ how the model should use its own tools here — not a description of what the to
 - `web_fetch` truncates to 8,000 characters - for a long page, prefer a narrower `web_search` query
   over relying on `web_fetch` to surface the right section.
 
+## `ocr_image` usage
+
+- Only available if `ocr.json`'s `Enabled` is true and its `TessDataPath` has a `.traineddata` file
+  matching `Language` - if it isn't in your list, don't ask the user to enable it mid-task; just
+  say OCR isn't configured.
+- It's a deterministic transcription tool, not a description tool - use it to pull literal text out
+  of a screenshot/scan/photo. For "what's in this image" questions about a non-text image, use
+  `open_image` instead (only useful if the active model is vision-capable).
+- Pass `language` per call only to override `ocr.json`'s default for that one image (e.g. a Thai
+  document while the default is `eng`) - don't pass it just to restate the default.
+
 ## `write_skill` / `delete_skill` scope
 
 - Default to `scope: "workspace"` (or omit it) for anything specific to this project - it lives in

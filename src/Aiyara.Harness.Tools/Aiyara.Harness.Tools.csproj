@@ -15,6 +15,7 @@
     <PackageReference Include="ModelContextProtocol.Core" />
     <PackageReference Include="OllamaSharp" />
     <PackageReference Include="Serilog" />
+    <PackageReference Include="Tesseract" />
   </ItemGroup>
 
   <ItemGroup>

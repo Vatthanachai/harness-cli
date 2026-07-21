@@ -30,8 +30,9 @@ so the model doesn't need to re-explore the tree every session.
   `mcp.json` and appends their tools (see `src/Aiyara.Harness.Tools/Mcp/`), builds/refreshes the
   RAG index and adds `search_documents` if `rag.json`'s `Enabled` is true (see
   `src/Aiyara.Harness.Tools/Rag/`), adds `web_search`/`web_fetch` if `websearch.json`'s `Enabled`
-  is true (see `src/Aiyara.Harness.Tools/Web/`), registers the built-in tools, starts the chat
-  session. Builds
+  is true (see `src/Aiyara.Harness.Tools/Web/`), adds `ocr_image` if `ocr.json`'s `Enabled` is true
+  and its `TessDataPath` has a `.traineddata` file matching `Language` (see `OcrImageTool.cs`),
+  registers the built-in tools, starts the chat session. Builds
   the Serilog file sink's path here rather than in `appsettings.json` -
   `%USERPROFILE%\.aiyara\logs\harness-.log`, via `UserConfigPaths.Directory`, needs to resolve at
   runtime to the current user's profile, not a path relative to wherever the process happens to be
@@ -110,11 +111,15 @@ so the model doesn't need to re-explore the tree every session.
   looks up a skill by name regardless of enabled state - used by `ChatSession`/`SlashInputReader`
   to resolve `/<skill-name>` as a slash command.
 - `ModelsOptions.cs`, `OllamaConnectionOptions.cs`, `LmStudioConnectionOptions.cs`, `McpOptions.cs`,
-  `RagOptions.cs`, `WebSearchOptions.cs`, `StatuslineOptions.cs`, `LoggingOptions.cs` — option types
-  stored as JSON config files. `WebSearchOptions` (`websearch.json`) backs `web_search`/`web_fetch` -
-  `BaseUrl` points at a self-hosted SearXNG instance (no API key needed); `Program.cs` skips
-  registering both tools (logging a warning) if `Enabled` is true but `BaseUrl` isn't a valid URL.
-  `ModelsOptions.Provider` (`Enums/Provider.cs`: `Ollama`/`LMStudio`) picks which server
+  `RagOptions.cs`, `WebSearchOptions.cs`, `OcrOptions.cs`, `StatuslineOptions.cs`,
+  `LoggingOptions.cs` — option types stored as JSON config files. `WebSearchOptions`
+  (`websearch.json`) backs `web_search`/`web_fetch` - `BaseUrl` points at a self-hosted SearXNG
+  instance (no API key needed); `Program.cs` skips registering both tools (logging a warning) if
+  `Enabled` is true but `BaseUrl` isn't a valid URL. `OcrOptions` (`ocr.json`) backs `ocr_image` -
+  `TessDataPath` (default a subfolder under `UserConfigPaths.Directory`) must hold the
+  `.traineddata` file for `Language` (default `eng`); `Program.cs` checks that file exists at
+  startup and skips registering the tool (logging a warning) if it's missing, same resilience
+  policy as `WebSearchOptions`. `ModelsOptions.Provider` (`Enums/Provider.cs`: `Ollama`/`LMStudio`) picks which server
   `Program.cs` builds a chat engine for at startup - read once, so switching it requires a
   restart; `ModelsOptions` is a `record` (not a plain class) so `SlashCommandContext.SwitchModel`
   can update `Default` via a `with`-expression without clobbering `Provider`.
@@ -132,6 +137,11 @@ Each tool is a small class deriving from `BaseTool`, registered in `Program.cs`'
   instead of crashing the chat session.
 - `OpenFileTools.cs`, `WriteFileTool.cs`, `OpenImageTool.cs`, `SaveImageTool.cs` — read/write text
   and image files.
+- `OcrImageTool.cs` — `ocr_image`: extracts text from an image file via a local Tesseract engine
+  (`Tesseract` NuGet package), creating a fresh `TesseractEngine` per call rather than holding one
+  for the session. Wired in only if `ocr.json`'s `Enabled` is true and its `TessDataPath` has the
+  needed `.traineddata` file; same opt-in-tool pattern as `Web/`. The native binaries it ships are
+  win-x64/win-x86 only - on other platforms a call fails with a clear error instead of crashing.
 - `ListFilesTool.cs` — recursively lists the workspace's file tree (read-only, no confirmation).
 - `AiyaraDocumentTool.cs`, `FilesDocumentTool.cs`, `ToolsDocumentTool.cs`, `CommandsDocumentTool.cs`,
   `MemoryDocumentTool.cs` — write `AIYARA.md` / `FILES.md` / `TOOLS.md` / `COMMANDS.md` /
