@@ -208,7 +208,7 @@ implementations once at startup based on `ModelsOptions.Provider`.
   can build an isolated sub-agent without a second connection.
 - `Ollama/OllamaChatEngine.cs`, `Ollama/OllamaModelCatalog.cs`, `Ollama/OllamaChatEngineFactory.cs`
   — thin forwarding wrappers around the real `OllamaSharp.Chat` / `IOllamaApiClient` (all the actual
-  behavior is OllamaSharp's). The factory reuses the same `RequestOptions` (`NumCtx: 32768`, etc.)
+  behavior is OllamaSharp's). The factory reuses the same `RequestOptions` (`NumCtx: 65536`, etc.)
   the primary chat gets, for the same reason: a thinking model needs the headroom.
 - `LmStudio/LmStudioChatEngine.cs` — hand-rolled client for LM Studio's OpenAI-compatible
   `/v1/chat/completions` (LM Studio has no equivalent of Ollama's native `/api/chat`). Owns the

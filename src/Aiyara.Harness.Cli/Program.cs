@@ -143,11 +143,13 @@ try
         // mid-thought and derailing the model so it never reaches a final answer. Confirmed by hand:
         // the same planning prompt at num_ctx=4096 was still streaming pure thinking tokens past 3
         // minutes with no end in sight, while at num_ctx=32768 it reached real answer content well
-        // within the same window.
+        // within the same window. Raised to 65536 for extra headroom on longer sessions/tool output
+        // (open_file/search_documents results aren't truncated before entering context, unlike the
+        // console display) - keep in sync with OllamaChatEngineFactory's sub-agent NumCtx.
         var chat = new Chat(ollama, systemPrompt.ToString())
         {
             Think = ThinkValue.High,
-            Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 32768 }
+            Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 65536 }
         };
 
         chatEngine = new OllamaChatEngine(chat);
