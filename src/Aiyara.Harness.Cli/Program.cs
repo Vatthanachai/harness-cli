@@ -87,6 +87,7 @@ try
     systemPrompt.Append($"\n\n{Persona.ToolchainPolicy}");
     systemPrompt.Append($"\n\n{Persona.VerificationPolicy}");
     systemPrompt.Append($"\n\n{Persona.TaskTrackingPolicy}");
+    systemPrompt.Append($"\n\n{Persona.DispatchAgentPolicy}");
     systemPrompt.Append($"\n\n{Persona.SkillPolicy}");
 
     var skillRegistry = new SkillRegistry();
@@ -154,13 +155,15 @@ try
         // mid-thought and derailing the model so it never reaches a final answer. Confirmed by hand:
         // the same planning prompt at num_ctx=4096 was still streaming pure thinking tokens past 3
         // minutes with no end in sight, while at num_ctx=32768 it reached real answer content well
-        // within the same window. Raised to 65536 for extra headroom on longer sessions/tool output
-        // (open_file/search_documents results aren't truncated before entering context, unlike the
-        // console display) - keep in sync with OllamaChatEngineFactory's sub-agent NumCtx.
+        // within the same window - that's the number to stay at. A brief bump to 65536 for extra
+        // headroom turned out to cost more than it was worth: the KV cache at that size crowds out
+        // this machine's 8GB of VRAM, forcing bigger models to spill further into system RAM than
+        // necessary and leaving less room for other running programs. Keep in sync with
+        // OllamaChatEngineFactory's sub-agent NumCtx.
         var chat = new Chat(ollama, systemPrompt.ToString())
         {
             Think = supportsThinking ? ThinkValue.High : null,
-            Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 65536 }
+            Options = new RequestOptions { Temperature = 0.7f, TopP = 0.9f, NumCtx = 32768 }
         };
 
         chatEngine = new OllamaChatEngine(chat);

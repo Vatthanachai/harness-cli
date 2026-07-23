@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 
 using OllamaSharp.Models.Chat;
 
+using Serilog;
+
 namespace Aiyara.Harness.Tools.Web;
 
 /// <summary>
@@ -51,14 +53,17 @@ public sealed class WebFetchTool : BaseTool
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             return "Error: 'url' must be an absolute http:// or https:// URL.";
 
-        return FetchAsync(uri).GetAwaiter().GetResult();
+        return FetchAsync(uri, ToolCancellation.Current).GetAwaiter().GetResult();
     }
 
-    private async Task<string> FetchAsync(Uri uri)
+    private async Task<string> FetchAsync(Uri uri, CancellationToken ct)
     {
-        using var response = await _httpClient.GetAsync(uri);
+        using var response = await _httpClient.GetAsync(uri, ct);
         if (!response.IsSuccessStatusCode)
+        {
+            Log.Warning("web_fetch: {Uri} returned {StatusCode} {ReasonPhrase}", uri, (int)response.StatusCode, response.ReasonPhrase);
             return $"Error: request returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+        }
 
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
         var body = await response.Content.ReadAsStringAsync();

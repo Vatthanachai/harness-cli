@@ -5,6 +5,8 @@ using Aiyara.Harness.Tools.Providers;
 using OllamaSharp.Models.Chat;
 using OllamaSharp.Tools;
 
+using Serilog;
+
 namespace Aiyara.Harness.Tools;
 
 /// <summary>
@@ -136,7 +138,7 @@ public sealed class DispatchAgentTool : BaseTool
             return $"Error: unknown agent_type '{agentType}'. Available: {string.Join(", ", AgentTypes.Select(x => x.Name))}.";
         }
 
-        return RunAsync(match, prompt).GetAwaiter().GetResult();
+        return RunAsync(match, prompt, ToolCancellation.Current).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -145,26 +147,45 @@ public sealed class DispatchAgentTool : BaseTool
     /// pattern <see cref="Web.WebSearchTool"/>/<c>SearchDocumentsTool</c> already use in their own
     /// <c>Execute</c>. Uses <see cref="_primaryEngine"/>'s *current* model (read live, not captured at
     /// construction) so a <c>/model</c> switch before dispatching applies to sub-agents too.
+    /// <paramref name="ct"/> is the primary turn's own cancellation (see <see cref="ToolCancellation"/>)
+    /// - cancelling it aborts the sub-agent's turn exactly like it would the primary conversation's.
     /// </summary>
-    private async Task<string> RunAsync((string Name, string Description, string Focus) type, string prompt)
+    private async Task<string> RunAsync((string Name, string Description, string Focus) type, string prompt, CancellationToken ct)
     {
         var systemPrompt = $"{_baseSystemPrompt}\n\n### Sub-agent role ###\n{type.Focus}";
-        var engine = await _factory.CreateAsync(_primaryEngine.Model, systemPrompt);
+        var engine = await _factory.CreateAsync(_primaryEngine.Model, systemPrompt, ct);
         var subAgentTools = ToolsFor(type.Name);
 
         engine.OnThink += (_, thought) => OnSubAgentThink?.Invoke(this, thought);
-        engine.OnToolCall += (_, call) => OnSubAgentToolCall?.Invoke(this, call);
-        engine.OnToolResult += (_, result) => OnSubAgentToolResult?.Invoke(this, result);
+
+        engine.OnToolCall += (_, call) =>
+        {
+            OnSubAgentToolCall?.Invoke(this, call);
+            Log.Information("[sub-agent:{AgentType}] wants to call: {ToolName}", type.Name, call.Function?.Name);
+        };
+
+        engine.OnToolResult += (_, result) =>
+        {
+            OnSubAgentToolResult?.Invoke(this, result);
+            Log.Information("[sub-agent:{AgentType}] tool returned: {ToolResult}", type.Name, result.Result);
+        };
+
+        Log.Information("Dispatching {AgentType} sub-agent: {Prompt}", type.Name, Truncate(prompt, 200));
 
         var text = new StringBuilder();
-        await foreach (var token in engine.SendAsync(prompt, subAgentTools))
+        await foreach (var token in engine.SendAsync(prompt, subAgentTools, ct))
         {
             text.Append(token);
         }
 
         var final = text.ToString().Trim();
+        Log.Information("{AgentType} sub-agent finished: {Length} char(s)", type.Name, final.Length);
+
         return string.IsNullOrEmpty(final) ? "(sub-agent returned no text)" : final;
     }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length > maxLength ? text[..maxLength] + "..." : text;
 
     /// <summary>
     /// Filters <see cref="_availableTools"/> down to what <paramref name="agentTypeName"/> gets:

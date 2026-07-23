@@ -174,6 +174,16 @@ internal static class ConsoleTheme
         WriteLineColored($"  ✗ {text}", Red);
     }
 
+    public static void WriteInterruptHint()
+    {
+        WriteLineColored("  (Esc or Ctrl+C to interrupt)", $"{Dim}{Gray}");
+    }
+
+    public static void WriteInterrupted()
+    {
+        WriteLineColored($"  {ToolResult} Interrupted by user", Gray);
+    }
+
     public static void WriteSeparator()
     {
         var width = Math.Min(Console.WindowWidth - 4, 60);

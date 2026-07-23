@@ -39,7 +39,7 @@ public sealed class McpTool : BaseTool
     protected override object? Execute(IDictionary<string, object?>? args)
     {
         var arguments = args?.ToDictionary(kv => kv.Key, kv => kv.Value) ?? new Dictionary<string, object?>();
-        var result = _client.CallToolAsync(_remoteName, arguments).GetAwaiter().GetResult();
+        var result = _client.CallToolAsync(_remoteName, arguments, cancellationToken: ToolCancellation.Current).GetAwaiter().GetResult();
 
         var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(t => t.Text));
         return result.IsError == true ? $"Error: {text}" : text;

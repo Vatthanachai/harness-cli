@@ -2,6 +2,8 @@ using System.Text.Json;
 
 using OllamaSharp.Models.Chat;
 
+using Serilog;
+
 namespace Aiyara.Harness.Tools.Web;
 
 /// <summary>
@@ -45,13 +47,13 @@ public sealed class WebSearchTool : BaseTool
         if (string.IsNullOrWhiteSpace(query))
             return "Error: 'query' is required.";
 
-        return SearchAsync(query).GetAwaiter().GetResult();
+        return SearchAsync(query, ToolCancellation.Current).GetAwaiter().GetResult();
     }
 
-    private async Task<string> SearchAsync(string query)
+    private async Task<string> SearchAsync(string query, CancellationToken ct)
     {
         var requestUri = $"search?q={Uri.EscapeDataString(query)}&format=json";
-        using var response = await _httpClient.GetAsync(requestUri);
+        using var response = await _httpClient.GetAsync(requestUri, ct);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -59,6 +61,8 @@ public sealed class WebSearchTool : BaseTool
             // until "json" is added to search.formats in its settings.yml (then the container
             // restarted) - flagging that here saves a trip to the SearXNG logs to find out why every
             // query 403s.
+            Log.Warning("web_search: SearXNG returned {StatusCode} {ReasonPhrase} for query '{Query}'",
+                (int)response.StatusCode, response.ReasonPhrase, query);
             return $"Error: SearXNG returned {(int)response.StatusCode} {response.ReasonPhrase}. If this " +
                    "is a fresh instance, make sure 'json' is listed under search.formats in its settings.yml.";
         }

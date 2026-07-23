@@ -90,6 +90,26 @@ public static class Persona
         "write_tasks entirely for a single quick action; it's not worth the overhead.";
 
     /// <summary>
+    /// Tells the model when to delegate to dispatch_agent instead of working inline - added because,
+    /// left with only the tool's own description, the model never reached for it on its own; every
+    /// other tool that needs a proactive habit (run_command scaffolding, write_tasks, skills) already
+    /// gets a policy paragraph like this one, dispatch_agent was the one exception. Kept separate from
+    /// <see cref="WorkingPrinciples"/> for the same reason as <see cref="TaskTrackingPolicy"/>: it's a
+    /// distinct habit, not a general one; <c>Program.cs</c> concatenates all of these into the final
+    /// system prompt.
+    /// </summary>
+    public const string DispatchAgentPolicy =
+        "Use dispatch_agent to hand off a bounded, self-contained piece of work instead of doing it inline, when " +
+        "either applies: (1) an open-ended investigation - searching, reading multiple files, or exploring an " +
+        "unfamiliar area of the codebase to answer a single question - dispatch it to the 'explore' agent_type " +
+        "rather than burning your own context on file contents you only need the answer from; (2) a distinct side " +
+        "task that doesn't need the rest of this conversation's context and whose own exploration/output would " +
+        "otherwise clutter it - dispatch it to 'general'. Don't dispatch a task you can already answer from what " +
+        "you've already read, a single quick lookup (a single open_file or list_files call is cheaper done " +
+        "directly), or anything that needs the conversation history, write_tasks/update_task, or handoff - a " +
+        "sub-agent starts with none of that and can't touch it.";
+
+    /// <summary>
     /// Explains the skill system (write_skill/use_skill/list_skills/delete_skill) - this harness's
     /// equivalent of Claude Code's own Skill system. Kept separate from <see cref="WorkingPrinciples"/>
     /// because it's a distinct subsystem with its own tools, not a general working habit;

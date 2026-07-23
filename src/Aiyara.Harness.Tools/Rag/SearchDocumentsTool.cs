@@ -48,8 +48,9 @@ public sealed class SearchDocumentsTool : BaseTool
         if (string.IsNullOrWhiteSpace(query))
             return "Error: 'query' is required.";
 
-        var queryEmbedding = _embeddings.EmbedAsync([query], _model).GetAwaiter().GetResult()[0];
-        var results = _store.SearchAsync(_collection, queryEmbedding, _topK).GetAwaiter().GetResult();
+        var ct = ToolCancellation.Current;
+        var queryEmbedding = _embeddings.EmbedAsync([query], _model, ct).GetAwaiter().GetResult()[0];
+        var results = _store.SearchAsync(_collection, queryEmbedding, _topK, ct).GetAwaiter().GetResult();
 
         if (results.Count == 0)
             return "No indexed documents matched.";

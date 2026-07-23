@@ -18,6 +18,12 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
     private readonly Queue<string> _pendingImageAttachments = new();
     private bool _eventsWired;
 
+    // Set only while a turn's chat.SendAsync is actually in flight - null the rest of the time
+    // (between turns, or while the user is typing). Doubles as the signal for the CancelKeyPress
+    // handler below: Ctrl+C interrupts the current turn when one is running, and falls through to
+    // its normal "terminate the process" behavior otherwise.
+    private CancellationTokenSource? _currentTurnCts;
+
     /// <summary>
     /// Sends a single message and streams/prints the reply, without entering the interactive
     /// read-eval-print loop. Used to run the one-off "generate AIYARA.md" turn at startup, with the
@@ -52,6 +58,18 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
     {
         if (_eventsWired) return;
         _eventsWired = true;
+
+        // Only takes effect mid-turn (_currentTurnCts is non-null): suppresses the default
+        // process-kill behavior and cancels the turn instead, same as pressing Esc. Idle between
+        // turns, _currentTurnCts is null and Ctrl+C is left to terminate the process as normal.
+        Console.CancelKeyPress += (_, e) =>
+        {
+            var cts = _currentTurnCts;
+            if (cts is null) return;
+
+            e.Cancel = true;
+            cts.Cancel();
+        };
 
         chat.OnThink += (_, thought) => _thinkBuffer.Append(thought);
 
@@ -113,16 +131,43 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
     private async Task SendMessageAsync(string message)
     {
         ConsoleTheme.WriteAssistantHeader();
+        ConsoleTheme.WriteInterruptHint();
         Console.Write("  ");
 
         var messageCountBeforeSend = chat.Messages.Count;
+
+        // Not disposed: Console.CancelKeyPress can fire on its own thread at any time, including
+        // after this method has already moved on to the finally block below - disposing here would
+        // risk an ObjectDisposedException race on cts.Cancel() from that handler. One CTS per turn
+        // is cheap enough to just let the GC reclaim.
+        var cts = new CancellationTokenSource();
+        _currentTurnCts = cts;
+
+        // Console.KeyAvailable throws when stdin is redirected (piped input, non-interactive
+        // runs) - same condition SlashInputReader/TerminalUI already gate raw key reads on. Ctrl+C
+        // still works to interrupt in that case; only the Esc-key poll is skipped.
+        var escapeWatcher = ui.IsActive ? WatchForEscapeAsync(cts) : Task.CompletedTask;
+
+        // Puts cts.Token within reach of a running tool call (e.g. run_command's process wait,
+        // dispatch_agent's nested sub-agent turn) via ToolCancellation.Current, since
+        // IInvokableTool.InvokeMethod itself has no CancellationToken parameter to pass one
+        // through directly - see ToolCancellation's own remarks.
+        using var toolCancellationScope = ToolCancellation.Scope(cts.Token);
+
         try
         {
-            await foreach (var token in chat.SendAsync(message, toolRegistry.Enabled))
+            await foreach (var token in chat.SendAsync(message, toolRegistry.Enabled, cts.Token))
             {
                 FlushThinking();
                 Console.Write(token);
             }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            FlushThinking();
+            Console.WriteLine();
+            ConsoleTheme.WriteInterrupted();
+            Log.Information("Chat turn interrupted by user");
         }
         catch (Exception ex)
         {
@@ -133,11 +178,45 @@ public sealed class ChatSession(IChatEngine chat, ToolRegistry toolRegistry, Sla
             ConsoleTheme.WriteError($"Request failed: {ex.Message}");
             Log.Error(ex, "Chat turn failed");
         }
+        finally
+        {
+            _currentTurnCts = null;
+            cts.Cancel(); // stop the escape-key watcher if the turn ended on its own
+            await escapeWatcher;
+        }
 
         FlushThinking();
         Console.WriteLine();
         Console.WriteLine();
         AttachPendingImages(messageCountBeforeSend);
+    }
+
+    /// <summary>
+    /// Polls for the Esc key while a turn is streaming and cancels <paramref name="cts"/> the
+    /// moment it's pressed, so <see cref="SendMessageAsync"/>'s await foreach unwinds mid-response.
+    /// Polls rather than blocking on <see cref="Console.ReadKey()"/> because that call has no way
+    /// to be cancelled from another thread; Task.Delay's own cancellation doubles as the exit
+    /// signal once the turn ends on its own (see the <c>finally</c> block above).
+    /// </summary>
+    private static async Task WatchForEscapeAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            while (true)
+            {
+                if (Console.KeyAvailable && Console.ReadKey(intercept: true).Key == ConsoleKey.Escape)
+                {
+                    cts.Cancel();
+                    return;
+                }
+
+                await Task.Delay(50, cts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Turn ended - normally, on error, or via this same Escape key - stop polling.
+        }
     }
 
     private void AttachPendingImages(int messageCountBeforeSend)
